@@ -688,6 +688,7 @@
       const ready = preview.status === "READY_FOR_APPROVAL";
       const agents = preview.agent_summary || {};
       const shariahStatus = agents.shariah?.status || preview.shariah?.status || "-";
+      const shariahMarket = agents.shariah?.market || "-";
       const quantSignal = agents.quant?.signal || "-";
       const riskStatus = agents.risk?.status || preview.risk?.status || "-";
       const quantBars = agents.quant?.bars ?? "-";
@@ -697,7 +698,7 @@
       const riskOk = riskStatus === "PASS";
       setMetric(previewStatus, preview.status || "Unknown", ready ? "ok" : "bad");
       setMetric(previewNotional, preview.notional ? `$${Number(preview.notional).toFixed(2)}` : "-");
-      setMetric(previewShariah, shariahStatus, shariahOk ? "ok" : "bad");
+      setMetric(previewShariah, shariahMarket === "-" ? shariahStatus : `${shariahStatus} / ${shariahMarket}`, shariahOk ? "ok" : "bad");
       setMetric(previewRisk, quantSignal, quantOk ? "ok" : "warn");
       setMetric(approvalStatus, riskStatus, riskOk ? "ok" : "bad");
       setMetric(priceSource, quantSource, quantSource === "tiingo" ? "ok" : "warn");

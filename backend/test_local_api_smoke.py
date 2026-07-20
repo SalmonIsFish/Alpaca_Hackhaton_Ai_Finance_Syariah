@@ -16,7 +16,7 @@ universe_path.write_text(
             "validation": {"status": "active"},
             "records": [
                 {
-                    "ticker": "TEST",
+                    "ticker": "0001",
                     "issuer_name": "Test Issuer",
                     "shariah_status": "COMPLIANT",
                 }
@@ -28,6 +28,7 @@ universe_path.write_text(
 os.environ["SHARIAH_UNIVERSE_PATH"] = str(universe_path)
 
 from agent_coordinator import evaluate_candidate
+from agents.shariah_agent import detect_market
 from local_api import app
 
 
@@ -59,6 +60,8 @@ def main() -> None:
     assert paper_payload["approval_required"] is True
     assert paper_payload["live_trading"] is False
     assert paper_payload["broker_submission"] is False
+    assert detect_market("0001") == "MY"
+    assert detect_market("AAPL") == "US"
 
     market_data = client.get("/market-data/TEST")
     assert market_data.status_code == 200, market_data.text
@@ -71,7 +74,7 @@ def main() -> None:
     agent_evaluation = client.post(
         "/agent/evaluate",
         json={
-            "symbol": "TEST",
+            "symbol": "0001",
             "side": "BUY",
             "quantity": 2,
             "price": 50.0,
@@ -87,6 +90,8 @@ def main() -> None:
     assert evaluation_payload["broker_submission"] is False
     evaluation = evaluation_payload["evaluation"]
     assert set(evaluation["agent_summary"]) == {"shariah", "quant", "risk"}
+    assert evaluation["agent_summary"]["shariah"]["market"] == "MY"
+    assert evaluation["agent_summary"]["shariah"]["provider"] == "SC_MY_LOCAL_UNIVERSE"
     assert evaluation["agent_summary"]["shariah"]["status"] == "PASS"
     assert evaluation["agent_summary"]["risk"]["status"] == "PASS"
     assert evaluation["agent_summary"]["quant"]["signal"] == "NO_SIGNAL"
@@ -94,7 +99,7 @@ def main() -> None:
     assert "quant_no_buy_signal" in evaluation["blockers"]
 
     ready_candidate = evaluate_candidate(
-        symbol="TEST",
+        symbol="0001",
         side="BUY",
         quantity=2,
         price=50.0,
@@ -106,7 +111,7 @@ def main() -> None:
         quant_override={
             "agent": "quant",
             "status": "PASS",
-            "symbol": "TEST",
+            "symbol": "0001",
             "signal": "BUY",
             "reason": "test_override",
             "price": 50.0,
@@ -123,7 +128,7 @@ def main() -> None:
     preview = client.post(
         "/paper/preview",
         json={
-            "symbol": "TEST",
+            "symbol": "0001",
             "side": "BUY",
             "quantity": 2,
             "price": 50.0,

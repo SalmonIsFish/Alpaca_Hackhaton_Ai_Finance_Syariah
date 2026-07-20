@@ -4,15 +4,47 @@ This agent is deterministic and fail-closed. It does not use an LLM.
 """
 
 from shariah_gate import check_symbol
+from zoya_compliance import check_us_symbol
 
 
-def evaluate_shariah(symbol: str) -> dict:
+def detect_market(symbol: str) -> str:
+    normalized = symbol.strip().upper()
+    if normalized.isdigit():
+        return "MY"
+    return "US"
+
+
+def _evaluate_malaysia(symbol: str) -> dict:
     result = check_symbol(symbol)
     status = "PASS" if result.get("status") == "PASS" else "REJECT"
     return {
         "agent": "shariah",
+        "market": "MY",
+        "provider": "SC_MY_LOCAL_UNIVERSE",
         "status": status,
         "symbol": symbol,
         "reason": result.get("reason"),
         "details": result,
     }
+
+
+def _evaluate_us(symbol: str) -> dict:
+    result = check_us_symbol(symbol)
+    status = "PASS" if result.get("status") == "COMPLIANT" else "REJECT"
+    return {
+        "agent": "shariah",
+        "market": "US",
+        "provider": "ZOYA",
+        "status": status,
+        "symbol": symbol,
+        "reason": result.get("reason") or result.get("status"),
+        "details": result,
+    }
+
+
+def evaluate_shariah(symbol: str) -> dict:
+    normalized = symbol.strip().upper()
+    market = detect_market(normalized)
+    if market == "MY":
+        return _evaluate_malaysia(normalized)
+    return _evaluate_us(normalized)
