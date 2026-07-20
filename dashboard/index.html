@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amanah Trader Local Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --border: #374151;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 24px 0;
+    }
+
+    input {
+      flex: 1 1 320px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #020617;
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      padding: 12px 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #2563eb;
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      background: var(--card);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .value {
+      margin-top: 8px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .ok {
+      color: var(--ok);
+    }
+
+    .warn {
+      color: var(--warn);
+    }
+
+    .bad {
+      color: var(--bad);
+    }
+
+    pre {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      background: #020617;
+      color: #d1d5db;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Amanah Trader Local Dashboard</h1>
+    <p>
+      Read-only status dashboard for the local paper-trading API. It checks API health,
+      paper mode, approval requirement, and live broker submission status.
+    </p>
+
+    <div class="controls">
+      <input id="apiBase" value="http://127.0.0.1:8000" aria-label="Local API base URL">
+      <button id="refreshButton" type="button">Refresh status</button>
+    </div>
+
+    <section class="grid" aria-live="polite">
+      <div class="card">
+        <div class="label">API connection</div>
+        <div id="apiConnection" class="value warn">Not checked</div>
+      </div>
+      <div class="card">
+        <div class="label">Paper mode</div>
+        <div id="paperMode" class="value warn">Not checked</div>
+      </div>
+      <div class="card">
+        <div class="label">Approval required</div>
+        <div id="approvalRequired" class="value warn">Not checked</div>
+      </div>
+      <div class="card">
+        <div class="label">Live broker submission</div>
+        <div id="brokerSubmission" class="value warn">Not checked</div>
+      </div>
+    </section>
+
+    <h2>Raw API response</h2>
+    <pre id="rawOutput">Click Refresh status.</pre>
+  </main>
+
+  <script>
+    const apiBaseInput = document.querySelector("#apiBase");
+    const refreshButton = document.querySelector("#refreshButton");
+    const apiConnection = document.querySelector("#apiConnection");
+    const paperMode = document.querySelector("#paperMode");
+    const approvalRequired = document.querySelector("#approvalRequired");
+    const brokerSubmission = document.querySelector("#brokerSubmission");
+    const rawOutput = document.querySelector("#rawOutput");
+
+    function setStatus(element, text, className) {
+      element.textContent = text;
+      element.className = `value ${className}`;
+    }
+
+    async function getJson(apiBase, path) {
+      const response = await fetch(`${apiBase}${path}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`${path} returned HTTP ${response.status}`);
+      }
+
+      return response.json();
+    }
+
+    async function refreshStatus() {
+      const apiBase = apiBaseInput.value.replace(/\/+$/, "");
+      refreshButton.disabled = true;
+      rawOutput.textContent = "Checking local API...";
+
+      try {
+        const [health, paper] = await Promise.all([
+          getJson(apiBase, "/health"),
+          getJson(apiBase, "/paper/status"),
+        ]);
+
+        setStatus(apiConnection, health.status === "ok" ? "Connected" : "Unexpected", health.status === "ok" ? "ok" : "bad");
+        setStatus(paperMode, health.mode === "paper" && paper.mode === "SIMULATE" ? "Paper / SIMULATE" : "Unexpected", health.mode === "paper" && paper.mode === "SIMULATE" ? "ok" : "bad");
+        setStatus(approvalRequired, paper.approval_required === true ? "Required" : "Not required", paper.approval_required === true ? "ok" : "bad");
+        setStatus(brokerSubmission, health.broker_submission === false && paper.broker_submission === false && paper.live_trading === false ? "Disabled" : "Enabled", health.broker_submission === false && paper.broker_submission === false && paper.live_trading === false ? "ok" : "bad");
+
+        rawOutput.textContent = JSON.stringify({ health, paper }, null, 2);
+      } catch (error) {
+        setStatus(apiConnection, "Disconnected", "bad");
+        setStatus(paperMode, "Unknown", "warn");
+        setStatus(approvalRequired, "Unknown", "warn");
+        setStatus(brokerSubmission, "Unknown", "warn");
+        rawOutput.textContent = String(error);
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener("click", refreshStatus);
+    refreshStatus();
+  </script>
+</body>
+</html>
