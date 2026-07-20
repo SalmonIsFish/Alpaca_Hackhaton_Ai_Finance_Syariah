@@ -48,6 +48,7 @@ def main() -> None:
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
+    assert "/paper/execute/{queue_id}" in home_payload["routes"]
     assert "/approvals" in home_payload["routes"]
 
     health = client.get("/health")
@@ -229,6 +230,13 @@ def main() -> None:
     assert latest_approval["quant_signal"] == "BUY"
     assert latest_approval["risk_status"] == "PASS"
 
+    locked_execution = client.post(f"/paper/execute/{ready_approval_payload['queue_id']}")
+    assert locked_execution.status_code == 200, locked_execution.text
+    locked_execution_payload = locked_execution.json()
+    assert locked_execution_payload["status"] == "EXECUTION_LOCKED"
+    assert locked_execution_payload["paper_execution_enabled"] is False
+    assert locked_execution_payload["broker_submission"] is False
+
     preview = client.post(
         "/paper/preview",
         json={
@@ -263,6 +271,12 @@ def main() -> None:
     assert approval_payload["approval"]["broker_submission"] is False
     assert approval_payload["approval"]["paper_execution_enabled"] is False
     assert approval_payload["approval"]["status"] == "REJECT"
+
+    rejected_execution = client.post(f"/paper/execute/{approval_payload['queue_id']}")
+    assert rejected_execution.status_code == 200, rejected_execution.text
+    rejected_execution_payload = rejected_execution.json()
+    assert rejected_execution_payload["execution_status"] == "NOT_APPROVED"
+    assert rejected_execution_payload["broker_submission"] is False
 
     print("PASS: local API smoke contract is safe for dashboard use.")
 

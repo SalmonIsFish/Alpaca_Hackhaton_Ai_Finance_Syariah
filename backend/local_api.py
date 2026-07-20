@@ -15,6 +15,7 @@ from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
+from paper_execution import execute_paper_order
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -74,7 +75,7 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/approvals", "/audit"],
+        "routes": ["/health", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
         "live_trading": False,
         "paper_execution_enabled": settings.paper_execution_enabled,
     }
@@ -217,3 +218,14 @@ def approvals() -> list[dict]:
         return list_approvals(connection)
     finally:
         connection.close()
+
+
+@app.post("/paper/execute/{queue_id}")
+def execute_paper(queue_id: int) -> dict:
+    connection = db()
+    try:
+        result = execute_paper_order(connection, queue_id)
+    finally:
+        connection.close()
+    audit = add_audit_event("paper_execution", result)
+    return {"execution_id": audit["id"], "created_at": audit["created_at"], **result}

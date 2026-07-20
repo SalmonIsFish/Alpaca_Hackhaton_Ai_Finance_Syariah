@@ -23,10 +23,22 @@ def ensure_approval_queue(connection: sqlite3.Connection) -> None:
             shariah_market TEXT,
             quant_signal TEXT,
             risk_status TEXT,
+            execution_status TEXT,
+            execution_message TEXT,
+            executed_at TEXT,
             payload TEXT NOT NULL
         )
         """
     )
+    existing_columns = {row[1] for row in connection.execute("PRAGMA table_info(approval_queue)").fetchall()}
+    migrations = {
+        "execution_status": "ALTER TABLE approval_queue ADD COLUMN execution_status TEXT",
+        "execution_message": "ALTER TABLE approval_queue ADD COLUMN execution_message TEXT",
+        "executed_at": "ALTER TABLE approval_queue ADD COLUMN executed_at TEXT",
+    }
+    for column, statement in migrations.items():
+        if column not in existing_columns:
+            connection.execute(statement)
     connection.commit()
 
 
@@ -59,9 +71,12 @@ def record_approval(connection: sqlite3.Connection, *, preview: dict, approval: 
             shariah_market,
             quant_signal,
             risk_status,
+            execution_status,
+            execution_message,
+            executed_at,
             payload
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             created_at,
@@ -77,6 +92,9 @@ def record_approval(connection: sqlite3.Connection, *, preview: dict, approval: 
             shariah.get("market"),
             quant.get("signal"),
             risk.get("status"),
+            "NOT_EXECUTED",
+            None,
+            None,
             json.dumps(payload, sort_keys=True),
         ),
     )
@@ -103,6 +121,9 @@ def list_approvals(connection: sqlite3.Connection, *, limit: int = 100) -> list[
             shariah_market,
             quant_signal,
             risk_status,
+            execution_status,
+            execution_message,
+            executed_at,
             payload
         FROM approval_queue
         ORDER BY id DESC
@@ -116,3 +137,53 @@ def list_approvals(connection: sqlite3.Connection, *, limit: int = 100) -> list[
         item["broker_submission"] = bool(item["broker_submission"])
         approvals.append(item)
     return approvals
+
+
+def get_approval(connection: sqlite3.Connection, approval_id: int) -> dict | None:
+    ensure_approval_queue(connection)
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            created_at,
+            symbol,
+            side,
+            quantity,
+            price,
+            notional,
+            approval_status,
+            execution_environment,
+            broker_submission,
+            shariah_status,
+            shariah_market,
+            quant_signal,
+            risk_status,
+            execution_status,
+            execution_message,
+            executed_at,
+            payload
+        FROM approval_queue
+        WHERE id = ?
+        """,
+        (approval_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["broker_submission"] = bool(item["broker_submission"])
+    return item
+
+
+def update_execution_status(connection: sqlite3.Connection, approval_id: int, *, status: str, message: str) -> dict:
+    ensure_approval_queue(connection)
+    executed_at = datetime.now(timezone.utc).isoformat()
+    connection.execute(
+        """
+        UPDATE approval_queue
+        SET execution_status = ?, execution_message = ?, executed_at = ?
+        WHERE id = ?
+        """,
+        (status, message, executed_at, approval_id),
+    )
+    connection.commit()
+    return {"id": approval_id, "execution_status": status, "execution_message": message, "executed_at": executed_at}

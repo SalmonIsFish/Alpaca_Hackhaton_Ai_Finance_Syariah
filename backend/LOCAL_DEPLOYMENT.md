@@ -20,6 +20,7 @@
    - `http://127.0.0.1:8000/moomoo/status`
    - `http://127.0.0.1:8000/agent/evaluate` (POST from dashboard)
    - `http://127.0.0.1:8000/approvals`
+   - `http://127.0.0.1:8000/paper/execute/{queue_id}` (POST; locked by default)
    - `http://127.0.0.1:8000/audit`
 
 6. Open the local dashboard:

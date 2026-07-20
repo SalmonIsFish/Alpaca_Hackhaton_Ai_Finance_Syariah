@@ -390,6 +390,13 @@
       justify-self: start;
     }
 
+    .queue-action {
+      grid-column: 1 / -1;
+      justify-self: start;
+      min-height: 34px;
+      padding: 7px 10px;
+    }
+
     .queue-meta {
       display: grid;
       gap: 3px;
@@ -836,7 +843,8 @@
         row.className = "queue-item";
         const statusClass = item.approval_status === "APPROVED_PAPER_READY" ? "ok" : item.approval_status === "REJECT" ? "bad" : "warn";
         const notional = item.notional == null ? "-" : `$${Number(item.notional).toFixed(2)}`;
-        const execution = item.execution_environment || "PENDING";
+        const execution = item.execution_status || item.execution_environment || "PENDING";
+        const canExecute = item.approval_status === "APPROVED_PAPER_READY" && item.broker_submission === false;
         row.innerHTML = `
           <span class="badge ${statusClass}">${item.approval_status}</span>
           <strong>${item.symbol}</strong>
@@ -845,9 +853,25 @@
             <span>${notional} · Shariah ${item.shariah_status || "-"} / ${item.shariah_market || "-"} · Quant ${item.quant_signal || "-"} · Risk ${item.risk_status || "-"}</span>
           </div>
           <span class="badge execution-badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker On" : execution}</span>
+          ${canExecute ? `<button class="secondary queue-action" type="button" data-execute-id="${item.id}">Execute Paper</button>` : ""}
         `;
         approvalQueueList.append(row);
       });
+    }
+
+    async function executeQueuedPaper(queueId) {
+      setBadge(responseBadge, "Executing", "warn");
+      rawOutput.textContent = "Checking paper execution lock...";
+      try {
+        const payload = await postJson(`/paper/execute/${queueId}`, {});
+        setBadge(responseBadge, payload.status === "EXECUTION_LOCKED" ? "Locked" : "Execution", payload.broker_submission ? "bad" : "warn");
+        rawOutput.textContent = JSON.stringify(payload, null, 2);
+        renderApprovalQueue(await getJson("/approvals"));
+        renderAudit(await getJson("/audit"));
+      } catch (error) {
+        setBadge(responseBadge, "Error", "bad");
+        rawOutput.textContent = String(error);
+      }
     }
 
     async function createPreview(event) {
@@ -930,6 +954,12 @@
     resetButton.addEventListener("click", resetTicket);
     approveButton.addEventListener("click", () => submitApproval(true));
     rejectButton.addEventListener("click", () => submitApproval(false));
+    approvalQueueList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-execute-id]");
+      if (button) {
+        executeQueuedPaper(button.dataset.executeId);
+      }
+    });
     refreshStatus();
   </script>
 </body>
