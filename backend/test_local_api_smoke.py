@@ -40,6 +40,7 @@ def main() -> None:
     assert home_payload["live_trading"] is False
     assert "/health" in home_payload["routes"]
     assert "/paper/status" in home_payload["routes"]
+    assert "/market-data/{symbol}" in home_payload["routes"]
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
@@ -58,6 +59,14 @@ def main() -> None:
     assert paper_payload["approval_required"] is True
     assert paper_payload["live_trading"] is False
     assert paper_payload["broker_submission"] is False
+
+    market_data = client.get("/market-data/TEST")
+    assert market_data.status_code == 200, market_data.text
+    market_payload = market_data.json()
+    assert market_payload["symbol"] == "TEST"
+    assert market_payload["source"] in {"fixture", "fixture_after_tiingo_error"}
+    assert market_payload["bars"] == 2
+    assert market_payload["enough_history"] is False
 
     agent_evaluation = client.post(
         "/agent/evaluate",

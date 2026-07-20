@@ -28,6 +28,10 @@
 
    `python test_local_api_smoke.py`
 
+8. Verify quant-agent market data:
+
+   `python check_market_data.py AAPL --strict`
+
 The SQLite file `paper_trading.db` is created in this folder. The API is bound to localhost, approval is required, and live trading is disabled.
 
 The local multi-agent path is deterministic at this stage: Shariah agent, quant agent, and risk engine run before the approval queue. No LLM is required for the current workflow.

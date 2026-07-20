@@ -547,6 +547,14 @@
               <strong id="approvalStatus">-</strong>
             </div>
             <div class="summary-card">
+              <div class="stat-label">Price Source</div>
+              <strong id="priceSource">-</strong>
+            </div>
+            <div class="summary-card">
+              <div class="stat-label">History Bars</div>
+              <strong id="historyBars">-</strong>
+            </div>
+            <div class="summary-card">
               <div class="stat-label">Broker Submission</div>
               <strong id="previewBroker" class="ok">Disabled</strong>
             </div>
@@ -589,6 +597,8 @@
     const previewShariah = document.querySelector("#previewShariah");
     const previewRisk = document.querySelector("#previewRisk");
     const approvalStatus = document.querySelector("#approvalStatus");
+    const priceSource = document.querySelector("#priceSource");
+    const historyBars = document.querySelector("#historyBars");
     const previewBroker = document.querySelector("#previewBroker");
     const approvalBadge = document.querySelector("#approvalBadge");
     const responseBadge = document.querySelector("#responseBadge");
@@ -680,6 +690,8 @@
       const shariahStatus = agents.shariah?.status || preview.shariah?.status || "-";
       const quantSignal = agents.quant?.signal || "-";
       const riskStatus = agents.risk?.status || preview.risk?.status || "-";
+      const quantBars = agents.quant?.bars ?? "-";
+      const quantSource = agents.quant?.price_source || "-";
       const shariahOk = shariahStatus === "PASS";
       const quantOk = quantSignal === "BUY";
       const riskOk = riskStatus === "PASS";
@@ -688,6 +700,8 @@
       setMetric(previewShariah, shariahStatus, shariahOk ? "ok" : "bad");
       setMetric(previewRisk, quantSignal, quantOk ? "ok" : "warn");
       setMetric(approvalStatus, riskStatus, riskOk ? "ok" : "bad");
+      setMetric(priceSource, quantSource, quantSource === "tiingo" ? "ok" : "warn");
+      setMetric(historyBars, String(quantBars), Number(quantBars) >= 200 ? "ok" : "warn");
       setMetric(previewBroker, preview.broker_submission === false ? "Disabled" : "Enabled", preview.broker_submission === false ? "ok" : "bad");
       setBadge(approvalBadge, ready ? "Ready For Approval" : "Rejected", ready ? "ok" : "bad");
       setBadge(responseBadge, "Preview", ready ? "ok" : "bad");
@@ -806,6 +820,8 @@
       setMetric(previewShariah, "-");
       setMetric(previewRisk, "-");
       setMetric(approvalStatus, "-");
+      setMetric(priceSource, "-");
+      setMetric(historyBars, "-");
       setMetric(previewBroker, "Disabled", "ok");
       setBadge(approvalBadge, "Awaiting Agents", "warn");
       setBadge(responseBadge, "Idle", "warn");

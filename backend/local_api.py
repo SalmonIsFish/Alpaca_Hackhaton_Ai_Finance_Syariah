@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from agent_coordinator import evaluate_candidate
 from approval_workflow import approve_candidate
 from config import load_settings
+from market_data import summarize_history
 from paper_order import prepare_paper_order
 
 
@@ -70,7 +71,7 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/agent/evaluate", "/paper/preview", "/paper/approval", "/audit"],
+        "routes": ["/health", "/paper/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/audit"],
         "live_trading": False,
     }
 
@@ -84,6 +85,11 @@ def health() -> dict:
 @app.get("/paper/status")
 def paper_status() -> dict:
     return {"mode": "SIMULATE", "approval_required": True, "live_trading": False, "broker_submission": False}
+
+
+@app.get("/market-data/{symbol}")
+def market_data_status(symbol: str) -> dict:
+    return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
 
 
 @app.post("/agent/evaluate")
