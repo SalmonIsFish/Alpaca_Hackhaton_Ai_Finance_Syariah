@@ -241,6 +241,8 @@
       font-size: var(--font-sm);
       font-weight: 900;
       line-height: 1;
+      overflow-wrap: anywhere;
+      text-align: center;
     }
 
     .badge.ok, .ok {
@@ -379,7 +381,13 @@
     }
 
     .queue-item {
-      grid-template-columns: 100px 72px 1fr 104px;
+      grid-template-columns: minmax(148px, auto) minmax(54px, auto) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .queue-item .execution-badge {
+      grid-column: 1 / -1;
+      justify-self: start;
     }
 
     .queue-meta {
@@ -388,6 +396,8 @@
       color: var(--muted);
       font-size: var(--font-sm);
       line-height: 1.25;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     .audit-item code {
@@ -817,7 +827,7 @@
             <span>${item.side} ${item.quantity ?? "-"} @ ${item.price ?? "-"}</span>
             <span>${notional} · Shariah ${item.shariah_status || "-"} / ${item.shariah_market || "-"} · Quant ${item.quant_signal || "-"} · Risk ${item.risk_status || "-"}</span>
           </div>
-          <span class="badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker On" : execution}</span>
+          <span class="badge execution-badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker On" : execution}</span>
         `;
         approvalQueueList.append(row);
       });
