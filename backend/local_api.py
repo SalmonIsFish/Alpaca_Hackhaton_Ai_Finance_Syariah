@@ -1,13 +1,17 @@
 """Minimal local API for the paper-trading dashboard."""
 
 import sqlite3
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
+from approval_workflow import approve_candidate
 from config import load_settings
+from paper_order import prepare_paper_order
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -29,12 +33,43 @@ def db() -> sqlite3.Connection:
     return connection
 
 
+class PaperPreviewRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=16)
+    side: str = "BUY"
+    quantity: int = Field(gt=0, le=1_000_000)
+    price: float = Field(gt=0)
+    position_pct: float = Field(ge=0)
+    total_exposure_pct: float = Field(ge=0)
+    loss_per_trade_pct: float = Field(ge=0)
+    daily_loss_pct: float = Field(ge=0)
+    orders_today: int = Field(ge=0)
+
+
+class PaperApprovalRequest(BaseModel):
+    preview: dict
+    approved: bool
+
+
+def add_audit_event(event_type: str, payload: dict) -> dict:
+    created_at = datetime.now(timezone.utc).isoformat()
+    connection = db()
+    try:
+        cursor = connection.execute(
+            "INSERT INTO audit_events (created_at, event_type, payload) VALUES (?, ?, ?)",
+            (created_at, event_type, json.dumps(payload, sort_keys=True)),
+        )
+        connection.commit()
+        return {"id": cursor.lastrowid, "created_at": created_at, "event_type": event_type}
+    finally:
+        connection.close()
+
+
 @app.get("/")
 def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/audit"],
+        "routes": ["/health", "/paper/status", "/paper/preview", "/paper/approval", "/audit"],
         "live_trading": False,
     }
 
@@ -50,16 +85,57 @@ def paper_status() -> dict:
     return {"mode": "SIMULATE", "approval_required": True, "live_trading": False, "broker_submission": False}
 
 
+@app.post("/paper/preview")
+def preview_paper_order(request: PaperPreviewRequest) -> dict:
+    side = request.side.strip().upper()
+    if side != "BUY":
+        preview = {
+            "status": "REJECT",
+            "reason": "only_buy_side_supported",
+            "side": side,
+            "broker_submission": False,
+        }
+    else:
+        preview = prepare_paper_order(
+            symbol=request.symbol.strip().upper(),
+            quantity=request.quantity,
+            price=request.price,
+            position_pct=request.position_pct,
+            total_exposure_pct=request.total_exposure_pct,
+            loss_per_trade_pct=request.loss_per_trade_pct,
+            daily_loss_pct=request.daily_loss_pct,
+            orders_today=request.orders_today,
+        )
+        preview["side"] = side
+
+    audit = add_audit_event("paper_preview", preview)
+    return {"preview_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "preview": preview}
+
+
+@app.post("/paper/approval")
+def approve_paper_order(request: PaperApprovalRequest) -> dict:
+    preview = request.preview
+    candidate = {
+        "signal": "BUY" if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
+        "compliance": {
+            "status": "COMPLIANT" if preview.get("shariah", {}).get("status") == "PASS" else "REJECT",
+            "source": "LOCAL_SHARIAH_GATE",
+        },
+        "symbol": preview.get("symbol"),
+        "side": preview.get("side", "BUY"),
+        "quantity": preview.get("quantity"),
+        "price": preview.get("price"),
+        "notional": preview.get("notional"),
+    }
+    approval = approve_candidate(candidate, approved_by_user=request.approved)
+    payload = {"approved_by_user": request.approved, "approval": approval, "preview": preview}
+    audit = add_audit_event("paper_approval", payload)
+    return {"approval_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "approval": approval}
+
+
 @app.post("/audit")
 def record_audit(event_type: str, payload: str) -> dict:
-    created_at = datetime.now(timezone.utc).isoformat()
-    connection = db()
-    try:
-        cursor = connection.execute("INSERT INTO audit_events (created_at, event_type, payload) VALUES (?, ?, ?)", (created_at, event_type, payload))
-        connection.commit()
-        return {"id": cursor.lastrowid, "created_at": created_at, "event_type": event_type}
-    finally:
-        connection.close()
+    return add_audit_event(event_type, {"payload": payload})
 
 
 @app.get("/audit")
