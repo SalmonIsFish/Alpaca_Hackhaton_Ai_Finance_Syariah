@@ -10,6 +10,7 @@ def main() -> int:
     print(f"Port: {status['port']}")
     print(f"Mode: {status['mode']}")
     print(f"Paper account ready: {status['paper_account_ready']}")
+    print(f"Paper execution enabled: {status['paper_execution_enabled']}")
     print(f"Broker submission: {status['broker_submission']}")
     if status.get("environment"):
         print(f"Environment: {status['environment']}")

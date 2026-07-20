@@ -201,7 +201,7 @@
 
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
@@ -484,6 +484,10 @@
         <div id="brokerSubmission" class="stat-value warn">Not checked</div>
       </div>
       <div class="stat">
+        <div class="stat-label">Paper Execution</div>
+        <div id="paperExecution" class="stat-value warn">Not checked</div>
+      </div>
+      <div class="stat">
         <div class="stat-label">Moomoo OpenD</div>
         <div id="moomooStatus" class="stat-value warn">Not checked</div>
       </div>
@@ -630,6 +634,7 @@
     const paperMode = document.querySelector("#paperMode");
     const approvalRequired = document.querySelector("#approvalRequired");
     const brokerSubmission = document.querySelector("#brokerSubmission");
+    const paperExecution = document.querySelector("#paperExecution");
     const moomooStatus = document.querySelector("#moomooStatus");
     const previewStatus = document.querySelector("#previewStatus");
     const previewNotional = document.querySelector("#previewNotional");
@@ -772,11 +777,13 @@
         const paperReady = health.mode === "paper" && paper.mode === "SIMULATE";
         const approvalReady = paper.approval_required === true;
         const brokerOff = health.broker_submission === false && paper.broker_submission === false && paper.live_trading === false;
+        const executionEnabled = paper.paper_execution_enabled === true;
         const moomooReady = moomoo.paper_account_ready === true;
         setStat(apiConnection, connected ? "Connected" : "Unexpected", connected ? "ok" : "bad");
         setStat(paperMode, paperReady ? "Paper / SIMULATE" : "Unexpected", paperReady ? "ok" : "bad");
         setStat(approvalRequired, approvalReady ? "Required" : "Not required", approvalReady ? "ok" : "bad");
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
+        setStat(paperExecution, executionEnabled ? "Enabled" : "Locked", executionEnabled ? "warn" : "ok");
         setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
         renderApprovalQueue(approvals);
         renderAudit(audit);
@@ -787,6 +794,7 @@
         setStat(paperMode, "Unknown", "warn");
         setStat(approvalRequired, "Unknown", "warn");
         setStat(brokerSubmission, "Unknown", "warn");
+        setStat(paperExecution, "Unknown", "warn");
         setStat(moomooStatus, "Unknown", "warn");
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);

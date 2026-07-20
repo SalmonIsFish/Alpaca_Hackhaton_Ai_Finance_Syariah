@@ -14,6 +14,7 @@ def check_moomoo_status() -> dict:
             "port": settings.moomoo_port,
             "mode": settings.moomoo_mode,
             "paper_account_ready": False,
+            "paper_execution_enabled": settings.paper_execution_enabled,
             "broker_submission": False,
             "reason": "moomoo_sdk_missing",
         }
@@ -24,6 +25,7 @@ def check_moomoo_status() -> dict:
             "port": settings.moomoo_port,
             "mode": settings.moomoo_mode,
             "paper_account_ready": False,
+            "paper_execution_enabled": settings.paper_execution_enabled,
             "broker_submission": False,
             "reason": type(exc).__name__,
         }
@@ -38,6 +40,7 @@ def check_moomoo_status() -> dict:
                 "port": settings.moomoo_port,
                 "mode": settings.moomoo_mode,
                 "paper_account_ready": False,
+                "paper_execution_enabled": settings.paper_execution_enabled,
                 "broker_submission": False,
                 "reason": f"get_acc_list_failed:{ret}",
             }
@@ -54,6 +57,7 @@ def check_moomoo_status() -> dict:
                 "port": settings.moomoo_port,
                 "mode": settings.moomoo_mode,
                 "paper_account_ready": False,
+                "paper_execution_enabled": settings.paper_execution_enabled,
                 "broker_submission": False,
                 "reason": "active_simulate_cash_account_not_found",
             }
@@ -65,6 +69,7 @@ def check_moomoo_status() -> dict:
             "port": settings.moomoo_port,
             "mode": settings.moomoo_mode,
             "paper_account_ready": True,
+            "paper_execution_enabled": settings.paper_execution_enabled,
             "broker_submission": False,
             "environment": str(paper.iloc[0]["trd_env"]),
             "account_type": str(paper.iloc[0]["acc_type"]),
@@ -78,6 +83,7 @@ def check_moomoo_status() -> dict:
             "port": settings.moomoo_port,
             "mode": settings.moomoo_mode,
             "paper_account_ready": False,
+            "paper_execution_enabled": settings.paper_execution_enabled,
             "broker_submission": False,
             "reason": type(exc).__name__,
         }

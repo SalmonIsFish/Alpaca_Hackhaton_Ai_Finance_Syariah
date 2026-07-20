@@ -40,6 +40,7 @@ def main() -> None:
     assert home.status_code == 200, home.text
     home_payload = home.json()
     assert home_payload["live_trading"] is False
+    assert home_payload["paper_execution_enabled"] is False
     assert "/health" in home_payload["routes"]
     assert "/paper/status" in home_payload["routes"]
     assert "/moomoo/status" in home_payload["routes"]
@@ -54,6 +55,7 @@ def main() -> None:
     health_payload = health.json()
     assert health_payload["status"] == "ok"
     assert health_payload["mode"] == "paper"
+    assert health_payload["paper_execution_enabled"] is False
     assert health_payload["broker_submission"] is False
 
     paper_status = client.get("/paper/status")
@@ -61,6 +63,7 @@ def main() -> None:
     paper_payload = paper_status.json()
     assert paper_payload["mode"] == "SIMULATE"
     assert paper_payload["approval_required"] is True
+    assert paper_payload["paper_execution_enabled"] is False
     assert paper_payload["live_trading"] is False
     assert paper_payload["broker_submission"] is False
     assert detect_market("0001") == "MY"
@@ -70,6 +73,7 @@ def main() -> None:
     assert moomoo.status_code == 200, moomoo.text
     moomoo_payload = moomoo.json()
     assert moomoo_payload["mode"] == "paper"
+    assert moomoo_payload["paper_execution_enabled"] is False
     assert moomoo_payload["broker_submission"] is False
     assert "paper_account_ready" in moomoo_payload
 
@@ -207,6 +211,7 @@ def main() -> None:
     assert ready_approval_payload["broker_submission"] is False
     assert ready_approval_payload["queue_id"] > 0
     assert ready_approval_payload["approval"]["status"] == "APPROVED_PAPER_READY"
+    assert ready_approval_payload["approval"]["paper_execution_enabled"] is False
     assert ready_approval_payload["approval"]["broker_submission"] is False
 
     approvals = client.get("/approvals")
@@ -256,6 +261,7 @@ def main() -> None:
     assert approval_payload["broker_submission"] is False
     assert approval_payload["queue_id"] > 0
     assert approval_payload["approval"]["broker_submission"] is False
+    assert approval_payload["approval"]["paper_execution_enabled"] is False
     assert approval_payload["approval"]["status"] == "REJECT"
 
     print("PASS: local API smoke contract is safe for dashboard use.")

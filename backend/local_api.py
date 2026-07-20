@@ -70,23 +70,26 @@ def add_audit_event(event_type: str, payload: dict) -> dict:
 
 @app.get("/")
 def home() -> dict:
+    settings = load_settings()
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
         "routes": ["/health", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/approvals", "/audit"],
         "live_trading": False,
+        "paper_execution_enabled": settings.paper_execution_enabled,
     }
 
 
 @app.get("/health")
 def health() -> dict:
     settings = load_settings()
-    return {"status": "ok", "mode": settings.moomoo_mode, "broker_submission": False}
+    return {"status": "ok", "mode": settings.moomoo_mode, "paper_execution_enabled": settings.paper_execution_enabled, "broker_submission": False}
 
 
 @app.get("/paper/status")
 def paper_status() -> dict:
-    return {"mode": "SIMULATE", "approval_required": True, "live_trading": False, "broker_submission": False}
+    settings = load_settings()
+    return {"mode": "SIMULATE", "approval_required": True, "paper_execution_enabled": settings.paper_execution_enabled, "live_trading": False, "broker_submission": False}
 
 
 @app.get("/market-data/{symbol}")
@@ -164,6 +167,7 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
 
 @app.post("/paper/approval")
 def approve_paper_order(request: PaperApprovalRequest) -> dict:
+    settings = load_settings()
     preview = request.preview
     shariah = preview.get("agent_summary", {}).get("shariah", preview.get("shariah", {}))
     candidate = {
@@ -180,6 +184,7 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
     }
     approval = approve_candidate(candidate, approved_by_user=request.approved)
     approval["broker_submission"] = False
+    approval["paper_execution_enabled"] = settings.paper_execution_enabled
     connection = db()
     try:
         queue_item = record_approval(connection, preview=preview, approval=approval, approved_by_user=request.approved)

@@ -36,6 +36,7 @@ class Settings:
     moomoo_mode: str
     moomoo_host: str
     moomoo_port: int
+    paper_execution_enabled: bool
 
 
 def load_settings() -> Settings:
@@ -47,6 +48,7 @@ def load_settings() -> Settings:
         port = int(os.getenv("MOOMOO_PORT", "11111"))
     except ValueError as exc:
         raise ValueError("MOOMOO_PORT must be an integer") from exc
+    paper_execution_enabled = os.getenv("PAPER_EXECUTION_ENABLED", "false").strip().lower() == "true"
 
     return Settings(
         tiingo_api_token=os.getenv("TIINGO_API_TOKEN") or None,
@@ -57,4 +59,5 @@ def load_settings() -> Settings:
         moomoo_mode=mode,
         moomoo_host=os.getenv("MOOMOO_HOST", "127.0.0.1"),
         moomoo_port=port,
+        paper_execution_enabled=paper_execution_enabled,
     )
