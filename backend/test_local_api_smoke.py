@@ -42,6 +42,7 @@ def main() -> None:
     assert home_payload["live_trading"] is False
     assert "/health" in home_payload["routes"]
     assert "/paper/status" in home_payload["routes"]
+    assert "/moomoo/status" in home_payload["routes"]
     assert "/market-data/{symbol}" in home_payload["routes"]
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
@@ -64,6 +65,13 @@ def main() -> None:
     assert paper_payload["broker_submission"] is False
     assert detect_market("0001") == "MY"
     assert detect_market("AAPL") == "US"
+
+    moomoo = client.get("/moomoo/status")
+    assert moomoo.status_code == 200, moomoo.text
+    moomoo_payload = moomoo.json()
+    assert moomoo_payload["mode"] == "paper"
+    assert moomoo_payload["broker_submission"] is False
+    assert "paper_account_ready" in moomoo_payload
 
     market_data = client.get("/market-data/TEST")
     assert market_data.status_code == 200, market_data.text

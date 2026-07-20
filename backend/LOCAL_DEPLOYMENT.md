@@ -17,6 +17,7 @@
 
    - `http://127.0.0.1:8000/health`
    - `http://127.0.0.1:8000/paper/status`
+   - `http://127.0.0.1:8000/moomoo/status`
    - `http://127.0.0.1:8000/agent/evaluate` (POST from dashboard)
    - `http://127.0.0.1:8000/approvals`
    - `http://127.0.0.1:8000/audit`
@@ -32,6 +33,10 @@
 8. Verify quant-agent market data:
 
    `python check_market_data.py AAPL --strict`
+
+9. Verify Moomoo OpenD paper account status:
+
+   `python check_moomoo_status.py`
 
 The SQLite file `paper_trading.db` is created in this folder. The API is bound to localhost, approval is required, and live trading is disabled.
 

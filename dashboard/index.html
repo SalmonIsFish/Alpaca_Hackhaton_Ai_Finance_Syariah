@@ -201,7 +201,7 @@
 
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
@@ -483,6 +483,10 @@
         <div class="stat-label">Broker Submission</div>
         <div id="brokerSubmission" class="stat-value warn">Not checked</div>
       </div>
+      <div class="stat">
+        <div class="stat-label">Moomoo OpenD</div>
+        <div id="moomooStatus" class="stat-value warn">Not checked</div>
+      </div>
     </section>
 
     <div class="layout">
@@ -626,6 +630,7 @@
     const paperMode = document.querySelector("#paperMode");
     const approvalRequired = document.querySelector("#approvalRequired");
     const brokerSubmission = document.querySelector("#brokerSubmission");
+    const moomooStatus = document.querySelector("#moomooStatus");
     const previewStatus = document.querySelector("#previewStatus");
     const previewNotional = document.querySelector("#previewNotional");
     const previewShariah = document.querySelector("#previewShariah");
@@ -755,9 +760,10 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, paper, approvals, audit] = await Promise.all([
+        const [health, paper, moomoo, approvals, audit] = await Promise.all([
           getJson("/health"),
           getJson("/paper/status"),
+          getJson("/moomoo/status"),
           getJson("/approvals"),
           getJson("/audit"),
         ]);
@@ -766,19 +772,22 @@
         const paperReady = health.mode === "paper" && paper.mode === "SIMULATE";
         const approvalReady = paper.approval_required === true;
         const brokerOff = health.broker_submission === false && paper.broker_submission === false && paper.live_trading === false;
+        const moomooReady = moomoo.paper_account_ready === true;
         setStat(apiConnection, connected ? "Connected" : "Unexpected", connected ? "ok" : "bad");
         setStat(paperMode, paperReady ? "Paper / SIMULATE" : "Unexpected", paperReady ? "ok" : "bad");
         setStat(approvalRequired, approvalReady ? "Required" : "Not required", approvalReady ? "ok" : "bad");
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
+        setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
         renderApprovalQueue(approvals);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
-        rawOutput.textContent = JSON.stringify({ health, paper }, null, 2);
+        rawOutput.textContent = JSON.stringify({ health, paper, moomoo }, null, 2);
       } catch (error) {
         setStat(apiConnection, "Disconnected", "bad");
         setStat(paperMode, "Unknown", "warn");
         setStat(approvalRequired, "Unknown", "warn");
         setStat(brokerSubmission, "Unknown", "warn");
+        setStat(moomooStatus, "Unknown", "warn");
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);
       } finally {

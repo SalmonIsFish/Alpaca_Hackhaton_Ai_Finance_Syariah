@@ -14,6 +14,7 @@ from approval_queue import ensure_approval_queue, list_approvals, record_approva
 from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
+from moomoo_status import check_moomoo_status
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -72,7 +73,7 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/approvals", "/audit"],
+        "routes": ["/health", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/approvals", "/audit"],
         "live_trading": False,
     }
 
@@ -91,6 +92,11 @@ def paper_status() -> dict:
 @app.get("/market-data/{symbol}")
 def market_data_status(symbol: str) -> dict:
     return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
+
+
+@app.get("/moomoo/status")
+def moomoo_status() -> dict:
+    return check_moomoo_status()
 
 
 @app.post("/agent/evaluate")
