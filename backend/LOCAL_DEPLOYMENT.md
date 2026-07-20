@@ -16,6 +16,7 @@
 5. Check the API in a browser:
 
    - `http://127.0.0.1:8000/health`
+   - `http://127.0.0.1:8000/system/mode`
    - `http://127.0.0.1:8000/paper/status`
    - `http://127.0.0.1:8000/moomoo/status`
    - `http://127.0.0.1:8000/agent/evaluate` (POST from dashboard)
@@ -39,6 +40,6 @@
 
    `python check_moomoo_status.py`
 
-The SQLite file `paper_trading.db` is created in this folder. The API is bound to localhost, approval is required, live trading is disabled, and paper execution is locked unless `PAPER_EXECUTION_ENABLED=true` is set explicitly.
+The SQLite file `paper_trading.db` is created in this folder. The API is bound to localhost, `TRADING_MODE=approval` is the default, live trading is disabled, and paper execution is locked unless `PAPER_EXECUTION_ENABLED=true` is set explicitly.
 
 The local multi-agent path is deterministic at this stage: Shariah agent, quant agent, and risk engine run before the approval queue. No LLM is required for the current workflow.

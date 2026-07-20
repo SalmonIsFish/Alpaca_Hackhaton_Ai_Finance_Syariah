@@ -201,7 +201,7 @@
 
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
@@ -483,6 +483,10 @@
         <div id="paperMode" class="stat-value warn">Not checked</div>
       </div>
       <div class="stat">
+        <div class="stat-label">Operating Mode</div>
+        <div id="tradingMode" class="stat-value warn">Not checked</div>
+      </div>
+      <div class="stat">
         <div class="stat-label">Approval Gate</div>
         <div id="approvalRequired" class="stat-value warn">Not checked</div>
       </div>
@@ -611,6 +615,14 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>Investment Committee</h2>
+            <span id="committeeBadge" class="badge warn">Not checked</span>
+          </div>
+          <div id="committeeList" class="audit-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>Approval Queue</h2>
             <span id="approvalQueueCount" class="badge warn">0 Orders</span>
           </div>
@@ -639,6 +651,7 @@
     const rejectButton = document.querySelector("#rejectButton");
     const apiConnection = document.querySelector("#apiConnection");
     const paperMode = document.querySelector("#paperMode");
+    const tradingMode = document.querySelector("#tradingMode");
     const approvalRequired = document.querySelector("#approvalRequired");
     const brokerSubmission = document.querySelector("#brokerSubmission");
     const paperExecution = document.querySelector("#paperExecution");
@@ -655,6 +668,8 @@
     const approvalBadge = document.querySelector("#approvalBadge");
     const responseBadge = document.querySelector("#responseBadge");
     const rawOutput = document.querySelector("#rawOutput");
+    const committeeList = document.querySelector("#committeeList");
+    const committeeBadge = document.querySelector("#committeeBadge");
     const approvalQueueList = document.querySelector("#approvalQueueList");
     const approvalQueueCount = document.querySelector("#approvalQueueCount");
     const auditList = document.querySelector("#auditList");
@@ -772,8 +787,9 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, paper, moomoo, approvals, audit] = await Promise.all([
+        const [health, systemMode, paper, moomoo, approvals, audit] = await Promise.all([
           getJson("/health"),
+          getJson("/system/mode"),
           getJson("/paper/status"),
           getJson("/moomoo/status"),
           getJson("/approvals"),
@@ -788,17 +804,20 @@
         const moomooReady = moomoo.paper_account_ready === true;
         setStat(apiConnection, connected ? "Connected" : "Unexpected", connected ? "ok" : "bad");
         setStat(paperMode, paperReady ? "Paper / SIMULATE" : "Unexpected", paperReady ? "ok" : "bad");
+        setStat(tradingMode, systemMode.trading_mode, systemMode.trading_mode === "approval" ? "ok" : "warn");
         setStat(approvalRequired, approvalReady ? "Required" : "Not required", approvalReady ? "ok" : "bad");
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
         setStat(paperExecution, executionEnabled ? "Enabled" : "Locked", executionEnabled ? "warn" : "ok");
         setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
+        renderCommittee(systemMode);
         renderApprovalQueue(approvals);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
-        rawOutput.textContent = JSON.stringify({ health, paper, moomoo }, null, 2);
+        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo }, null, 2);
       } catch (error) {
         setStat(apiConnection, "Disconnected", "bad");
         setStat(paperMode, "Unknown", "warn");
+        setStat(tradingMode, "Unknown", "warn");
         setStat(approvalRequired, "Unknown", "warn");
         setStat(brokerSubmission, "Unknown", "warn");
         setStat(paperExecution, "Unknown", "warn");
@@ -825,6 +844,18 @@
         item.className = "audit-item";
         item.innerHTML = `<span class="badge ok">${event.event_type}</span><code>${event.created_at}</code>`;
         auditList.append(item);
+      });
+    }
+
+    function renderCommittee(systemMode) {
+      committeeList.replaceChildren();
+      const executionAllowed = systemMode.effective_paper_execution_allowed === true;
+      setBadge(committeeBadge, executionAllowed ? "Execution Allowed" : "Approval Mode", executionAllowed ? "warn" : "ok");
+      systemMode.agent_team.forEach((agent) => {
+        const item = document.createElement("div");
+        item.className = "audit-item";
+        item.innerHTML = `<span class="badge ok">${agent.name}</span><code>${agent.role}</code>`;
+        committeeList.append(item);
       });
     }
 

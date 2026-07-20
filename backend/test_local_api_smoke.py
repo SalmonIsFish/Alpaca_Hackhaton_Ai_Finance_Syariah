@@ -40,8 +40,10 @@ def main() -> None:
     assert home.status_code == 200, home.text
     home_payload = home.json()
     assert home_payload["live_trading"] is False
+    assert home_payload["trading_mode"] == "approval"
     assert home_payload["paper_execution_enabled"] is False
     assert "/health" in home_payload["routes"]
+    assert "/system/mode" in home_payload["routes"]
     assert "/paper/status" in home_payload["routes"]
     assert "/moomoo/status" in home_payload["routes"]
     assert "/market-data/{symbol}" in home_payload["routes"]
@@ -56,13 +58,25 @@ def main() -> None:
     health_payload = health.json()
     assert health_payload["status"] == "ok"
     assert health_payload["mode"] == "paper"
+    assert health_payload["trading_mode"] == "approval"
     assert health_payload["paper_execution_enabled"] is False
     assert health_payload["broker_submission"] is False
+
+    system_mode = client.get("/system/mode")
+    assert system_mode.status_code == 200, system_mode.text
+    system_mode_payload = system_mode.json()
+    assert system_mode_payload["trading_mode"] == "approval"
+    assert system_mode_payload["capabilities"]["agents_can_recommend"] is True
+    assert system_mode_payload["capabilities"]["human_approval_required"] is True
+    assert system_mode_payload["effective_paper_execution_allowed"] is False
+    assert system_mode_payload["broker_submission"] is False
+    assert len(system_mode_payload["agent_team"]) >= 5
 
     paper_status = client.get("/paper/status")
     assert paper_status.status_code == 200, paper_status.text
     paper_payload = paper_status.json()
     assert paper_payload["mode"] == "SIMULATE"
+    assert paper_payload["trading_mode"] == "approval"
     assert paper_payload["approval_required"] is True
     assert paper_payload["paper_execution_enabled"] is False
     assert paper_payload["live_trading"] is False

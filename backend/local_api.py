@@ -16,6 +16,7 @@ from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from paper_execution import execute_paper_order
+from trading_modes import trading_mode_status
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -75,8 +76,9 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
+        "routes": ["/health", "/system/mode", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
         "live_trading": False,
+        "trading_mode": settings.trading_mode,
         "paper_execution_enabled": settings.paper_execution_enabled,
     }
 
@@ -84,13 +86,18 @@ def home() -> dict:
 @app.get("/health")
 def health() -> dict:
     settings = load_settings()
-    return {"status": "ok", "mode": settings.moomoo_mode, "paper_execution_enabled": settings.paper_execution_enabled, "broker_submission": False}
+    return {"status": "ok", "mode": settings.moomoo_mode, "trading_mode": settings.trading_mode, "paper_execution_enabled": settings.paper_execution_enabled, "broker_submission": False}
 
 
 @app.get("/paper/status")
 def paper_status() -> dict:
     settings = load_settings()
-    return {"mode": "SIMULATE", "approval_required": True, "paper_execution_enabled": settings.paper_execution_enabled, "live_trading": False, "broker_submission": False}
+    return {"mode": "SIMULATE", "trading_mode": settings.trading_mode, "approval_required": settings.trading_mode == "approval", "paper_execution_enabled": settings.paper_execution_enabled, "live_trading": False, "broker_submission": False}
+
+
+@app.get("/system/mode")
+def system_mode() -> dict:
+    return trading_mode_status()
 
 
 @app.get("/market-data/{symbol}")

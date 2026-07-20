@@ -33,6 +33,7 @@ class Settings:
     zoya_environment: str
     shariah_universe_path: str | None
     shariah_wiki_path: str | None
+    trading_mode: str
     moomoo_mode: str
     moomoo_host: str
     moomoo_port: int
@@ -40,6 +41,10 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    trading_mode = os.getenv("TRADING_MODE", "approval").strip().lower()
+    if trading_mode not in {"advisory", "approval", "autonomous_paper"}:
+        raise ValueError("TRADING_MODE must be advisory, approval, or autonomous_paper")
+
     mode = os.getenv("MOOMOO_MODE", "paper").strip().lower()
     if mode != "paper":
         raise ValueError("MOOMOO_MODE must remain 'paper'; live mode is disabled")
@@ -56,6 +61,7 @@ def load_settings() -> Settings:
         zoya_environment=os.getenv("ZOYA_ENVIRONMENT", "sandbox").strip().lower(),
         shariah_universe_path=os.getenv("SHARIAH_UNIVERSE_PATH") or None,
         shariah_wiki_path=os.getenv("SHARIAH_WIKI_PATH") or None,
+        trading_mode=trading_mode,
         moomoo_mode=mode,
         moomoo_host=os.getenv("MOOMOO_HOST", "127.0.0.1"),
         moomoo_port=port,
