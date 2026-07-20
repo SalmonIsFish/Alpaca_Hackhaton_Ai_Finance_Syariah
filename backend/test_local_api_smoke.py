@@ -29,6 +29,7 @@ os.environ["SHARIAH_UNIVERSE_PATH"] = str(universe_path)
 
 from agent_coordinator import evaluate_candidate
 from agents.shariah_agent import detect_market
+import local_api
 from local_api import app
 
 
@@ -124,6 +125,79 @@ def main() -> None:
     assert ready_candidate["broker_submission"] is False
     assert ready_candidate["agent_summary"]["shariah"]["status"] == "PASS"
     assert ready_candidate["agent_summary"]["risk"]["status"] == "PASS"
+
+    original_evaluate_candidate = local_api.evaluate_candidate
+    local_api.evaluate_candidate = lambda **kwargs: {
+        "symbol": "AAPL",
+        "side": "BUY",
+        "quantity": 1,
+        "price": 333.74,
+        "notional": 333.74,
+        "decision": "READY_FOR_APPROVAL",
+        "blockers": [],
+        "broker_submission": False,
+        "agent_summary": {
+            "shariah": {
+                "agent": "shariah",
+                "market": "US",
+                "provider": "ZOYA",
+                "status": "PASS",
+                "symbol": "AAPL",
+                "reason": "COMPLIANT",
+                "details": {"status": "COMPLIANT", "symbol": "AAPL"},
+            },
+            "quant": {
+                "agent": "quant",
+                "status": "PASS",
+                "symbol": "AAPL",
+                "signal": "BUY",
+                "reason": "test_override",
+                "price": 333.74,
+                "bars": 218,
+                "price_source": "tiingo",
+                "strategy": {"signal": "BUY"},
+            },
+            "risk": {
+                "agent": "risk_engine",
+                "status": "PASS",
+                "reason": "risk_limits_passed",
+                "details": {"status": "PASS", "checks": {}},
+            },
+        },
+    }
+    try:
+        ready_preview = client.post(
+            "/paper/preview",
+            json={
+                "symbol": "AAPL",
+                "side": "BUY",
+                "quantity": 1,
+                "price": 333.74,
+                "position_pct": 1.0,
+                "total_exposure_pct": 5.0,
+                "loss_per_trade_pct": 0.2,
+                "daily_loss_pct": 0.3,
+                "orders_today": 0,
+            },
+        )
+    finally:
+        local_api.evaluate_candidate = original_evaluate_candidate
+    assert ready_preview.status_code == 200, ready_preview.text
+    ready_preview_payload = ready_preview.json()
+    assert ready_preview_payload["broker_submission"] is False
+    assert ready_preview_payload["preview"]["status"] == "READY_FOR_APPROVAL"
+    assert ready_preview_payload["preview"]["broker_submission"] is False
+    assert ready_preview_payload["preview"]["agent_summary"]["shariah"]["provider"] == "ZOYA"
+
+    ready_approval = client.post(
+        "/paper/approval",
+        json={"preview": ready_preview_payload["preview"], "approved": True},
+    )
+    assert ready_approval.status_code == 200, ready_approval.text
+    ready_approval_payload = ready_approval.json()
+    assert ready_approval_payload["broker_submission"] is False
+    assert ready_approval_payload["approval"]["status"] == "APPROVED_PAPER_READY"
+    assert ready_approval_payload["approval"]["broker_submission"] is False
 
     preview = client.post(
         "/paper/preview",

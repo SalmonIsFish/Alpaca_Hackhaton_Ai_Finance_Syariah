@@ -13,7 +13,6 @@ from agent_coordinator import evaluate_candidate
 from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
-from paper_order import prepare_paper_order
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -128,23 +127,28 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "status": "REJECT",
             "reason": "agent_evaluation_blocked",
             "blockers": evaluation["blockers"],
+            "symbol": evaluation["symbol"],
+            "quantity": evaluation["quantity"],
+            "price": evaluation["price"],
+            "notional": evaluation["notional"],
             "side": side,
             "broker_submission": False,
             "agent_summary": evaluation["agent_summary"],
         }
     else:
-        preview = prepare_paper_order(
-            symbol=evaluation["symbol"],
-            quantity=request.quantity,
-            price=evaluation["price"],
-            position_pct=request.position_pct,
-            total_exposure_pct=request.total_exposure_pct,
-            loss_per_trade_pct=request.loss_per_trade_pct,
-            daily_loss_pct=request.daily_loss_pct,
-            orders_today=request.orders_today,
-        )
-        preview["side"] = side
-        preview["agent_summary"] = evaluation["agent_summary"]
+        preview = {
+            "status": "READY_FOR_APPROVAL",
+            "execution": "PAPER_ONLY",
+            "broker_submission": False,
+            "symbol": evaluation["symbol"],
+            "side": side,
+            "quantity": evaluation["quantity"],
+            "price": evaluation["price"],
+            "notional": evaluation["notional"],
+            "shariah": evaluation["agent_summary"]["shariah"],
+            "risk": evaluation["agent_summary"]["risk"],
+            "agent_summary": evaluation["agent_summary"],
+        }
 
     audit = add_audit_event("paper_preview", preview)
     return {"preview_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "preview": preview}
@@ -153,11 +157,12 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
 @app.post("/paper/approval")
 def approve_paper_order(request: PaperApprovalRequest) -> dict:
     preview = request.preview
+    shariah = preview.get("agent_summary", {}).get("shariah", preview.get("shariah", {}))
     candidate = {
         "signal": "BUY" if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
         "compliance": {
-            "status": "COMPLIANT" if preview.get("shariah", {}).get("status") == "PASS" else "REJECT",
-            "source": "LOCAL_SHARIAH_GATE",
+            "status": "COMPLIANT" if shariah.get("status") == "PASS" else "REJECT",
+            "source": shariah.get("provider", "SHARIAH_AGENT"),
         },
         "symbol": preview.get("symbol"),
         "side": preview.get("side", "BUY"),
