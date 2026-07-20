@@ -544,7 +544,11 @@
             </div>
             <div class="summary-card">
               <div class="stat-label">Risk Engine</div>
-              <strong id="approvalStatus">-</strong>
+              <strong id="riskStatus">-</strong>
+            </div>
+            <div class="summary-card">
+              <div class="stat-label">Approval Result</div>
+              <strong id="approvalStatus">Not approved</strong>
             </div>
             <div class="summary-card">
               <div class="stat-label">Price Source</div>
@@ -596,6 +600,7 @@
     const previewNotional = document.querySelector("#previewNotional");
     const previewShariah = document.querySelector("#previewShariah");
     const previewRisk = document.querySelector("#previewRisk");
+    const riskStatusMetric = document.querySelector("#riskStatus");
     const approvalStatus = document.querySelector("#approvalStatus");
     const priceSource = document.querySelector("#priceSource");
     const historyBars = document.querySelector("#historyBars");
@@ -700,7 +705,8 @@
       setMetric(previewNotional, preview.notional ? `$${Number(preview.notional).toFixed(2)}` : "-");
       setMetric(previewShariah, shariahMarket === "-" ? shariahStatus : `${shariahStatus} / ${shariahMarket}`, shariahOk ? "ok" : "bad");
       setMetric(previewRisk, quantSignal, quantOk ? "ok" : "warn");
-      setMetric(approvalStatus, riskStatus, riskOk ? "ok" : "bad");
+      setMetric(riskStatusMetric, riskStatus, riskOk ? "ok" : "bad");
+      setMetric(approvalStatus, ready ? "Ready" : "Blocked", ready ? "warn" : "bad");
       setMetric(priceSource, quantSource, quantSource === "tiingo" ? "ok" : "warn");
       setMetric(historyBars, String(quantBars), Number(quantBars) >= 200 ? "ok" : "warn");
       setMetric(previewBroker, preview.broker_submission === false ? "Disabled" : "Enabled", preview.broker_submission === false ? "ok" : "bad");
@@ -802,7 +808,8 @@
           approved,
         });
         const status = payload.approval?.status || "Recorded";
-        setMetric(approvalStatus, status, approved ? "ok" : "warn");
+        const execution = payload.approval?.execution_environment;
+        setMetric(approvalStatus, execution ? `${status} / ${execution}` : status, approved ? "ok" : "warn");
         setBadge(approvalBadge, approved ? "Approved" : "Rejected", approved ? "ok" : "warn");
         setBadge(responseBadge, "Approval", approved ? "ok" : "warn");
         rawOutput.textContent = JSON.stringify(payload, null, 2);
@@ -820,7 +827,8 @@
       setMetric(previewNotional, "-");
       setMetric(previewShariah, "-");
       setMetric(previewRisk, "-");
-      setMetric(approvalStatus, "-");
+      setMetric(riskStatusMetric, "-");
+      setMetric(approvalStatus, "Not approved", "warn");
       setMetric(priceSource, "-");
       setMetric(historyBars, "-");
       setMetric(previewBroker, "Disabled", "ok");
