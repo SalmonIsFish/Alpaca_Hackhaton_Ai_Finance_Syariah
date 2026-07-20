@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from agent_coordinator import evaluate_candidate
 from approval_workflow import approve_candidate
 from config import load_settings
 from paper_order import prepare_paper_order
@@ -37,7 +38,7 @@ class PaperPreviewRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=16)
     side: str = "BUY"
     quantity: int = Field(gt=0, le=1_000_000)
-    price: float = Field(gt=0)
+    price: float | None = Field(default=None, gt=0)
     position_pct: float = Field(ge=0)
     total_exposure_pct: float = Field(ge=0)
     loss_per_trade_pct: float = Field(ge=0)
@@ -69,7 +70,7 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/paper/preview", "/paper/approval", "/audit"],
+        "routes": ["/health", "/paper/status", "/agent/evaluate", "/paper/preview", "/paper/approval", "/audit"],
         "live_trading": False,
     }
 
@@ -85,21 +86,51 @@ def paper_status() -> dict:
     return {"mode": "SIMULATE", "approval_required": True, "live_trading": False, "broker_submission": False}
 
 
+@app.post("/agent/evaluate")
+def evaluate_agents(request: PaperPreviewRequest) -> dict:
+    evaluation = evaluate_candidate(
+        symbol=request.symbol,
+        side=request.side,
+        quantity=request.quantity,
+        price=request.price,
+        position_pct=request.position_pct,
+        total_exposure_pct=request.total_exposure_pct,
+        loss_per_trade_pct=request.loss_per_trade_pct,
+        daily_loss_pct=request.daily_loss_pct,
+        orders_today=request.orders_today,
+    )
+    audit = add_audit_event("agent_evaluation", evaluation)
+    return {"evaluation_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "evaluation": evaluation}
+
+
 @app.post("/paper/preview")
 def preview_paper_order(request: PaperPreviewRequest) -> dict:
+    evaluation = evaluate_candidate(
+        symbol=request.symbol,
+        side=request.side,
+        quantity=request.quantity,
+        price=request.price,
+        position_pct=request.position_pct,
+        total_exposure_pct=request.total_exposure_pct,
+        loss_per_trade_pct=request.loss_per_trade_pct,
+        daily_loss_pct=request.daily_loss_pct,
+        orders_today=request.orders_today,
+    )
     side = request.side.strip().upper()
-    if side != "BUY":
+    if evaluation["decision"] != "READY_FOR_APPROVAL" or evaluation["price"] is None:
         preview = {
             "status": "REJECT",
-            "reason": "only_buy_side_supported",
+            "reason": "agent_evaluation_blocked",
+            "blockers": evaluation["blockers"],
             "side": side,
             "broker_submission": False,
+            "agent_summary": evaluation["agent_summary"],
         }
     else:
         preview = prepare_paper_order(
-            symbol=request.symbol.strip().upper(),
+            symbol=evaluation["symbol"],
             quantity=request.quantity,
-            price=request.price,
+            price=evaluation["price"],
             position_pct=request.position_pct,
             total_exposure_pct=request.total_exposure_pct,
             loss_per_trade_pct=request.loss_per_trade_pct,
@@ -107,6 +138,7 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             orders_today=request.orders_today,
         )
         preview["side"] = side
+        preview["agent_summary"] = evaluation["agent_summary"]
 
     audit = add_audit_event("paper_preview", preview)
     return {"preview_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "preview": preview}
@@ -128,6 +160,7 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
         "notional": preview.get("notional"),
     }
     approval = approve_candidate(candidate, approved_by_user=request.approved)
+    approval["broker_submission"] = False
     payload = {"approved_by_user": request.approved, "approval": approval, "preview": preview}
     audit = add_audit_event("paper_approval", payload)
     return {"approval_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "approval": approval}

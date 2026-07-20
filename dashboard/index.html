@@ -467,8 +467,8 @@
       <section>
         <section class="panel">
           <div class="panel-head">
-            <h2>Order Ticket</h2>
-            <span class="badge ok">Paper Only</span>
+            <h2>Agent Evaluation</h2>
+            <span class="badge ok">Local Agents</span>
           </div>
           <form id="previewForm">
             <div class="order-grid">
@@ -504,7 +504,7 @@
               </label>
             </div>
             <div class="form-actions">
-              <button id="previewButton" type="submit">Preview Order</button>
+              <button id="previewButton" type="submit">Run Agents</button>
               <button id="resetButton" class="secondary" type="button">Reset</button>
             </div>
           </form>
@@ -522,12 +522,12 @@
       <aside>
         <section class="panel">
           <div class="panel-head">
-            <h2>Safety Review</h2>
-            <span id="approvalBadge" class="badge warn">Awaiting Preview</span>
+            <h2>Agent Summary</h2>
+            <span id="approvalBadge" class="badge warn">Awaiting Agents</span>
           </div>
           <div class="summary-grid">
             <div class="summary-card">
-              <div class="stat-label">Preview Status</div>
+              <div class="stat-label">Coordinator</div>
               <strong id="previewStatus" class="warn">No preview</strong>
             </div>
             <div class="summary-card">
@@ -535,15 +535,15 @@
               <strong id="previewNotional">-</strong>
             </div>
             <div class="summary-card">
-              <div class="stat-label">Shariah Status</div>
+              <div class="stat-label">Shariah Agent</div>
               <strong id="previewShariah">-</strong>
             </div>
             <div class="summary-card">
-              <div class="stat-label">Risk State</div>
+              <div class="stat-label">Quant Agent</div>
               <strong id="previewRisk">-</strong>
             </div>
             <div class="summary-card">
-              <div class="stat-label">Approval Status</div>
+              <div class="stat-label">Risk Engine</div>
               <strong id="approvalStatus">-</strong>
             </div>
             <div class="summary-card">
@@ -552,7 +552,7 @@
             </div>
           </div>
           <div class="approval-box">
-            <span class="panel-meta">Manual approval checkpoint</span>
+            <span class="panel-meta">Approval queue checkpoint</span>
             <div class="approval-actions">
               <button id="approveButton" type="button" disabled>Approve</button>
               <button id="rejectButton" class="reject" type="button" disabled>Reject</button>
@@ -624,6 +624,20 @@
       return Number(document.querySelector(`#${id}`).value);
     }
 
+    function candidatePayload() {
+      return {
+        symbol: document.querySelector("#symbol").value,
+        side: document.querySelector("#side").value,
+        quantity: toNumber("quantity"),
+        price: toNumber("price"),
+        position_pct: toNumber("positionPct"),
+        total_exposure_pct: toNumber("totalExposurePct"),
+        loss_per_trade_pct: toNumber("lossPerTradePct"),
+        daily_loss_pct: toNumber("dailyLossPct"),
+        orders_today: toNumber("ordersToday"),
+      };
+    }
+
     function setTheme(theme) {
       document.documentElement.dataset.theme = theme;
       const isDark = theme === "dark";
@@ -662,13 +676,18 @@
       currentPreview = payload.preview;
       const preview = payload.preview;
       const ready = preview.status === "READY_FOR_APPROVAL";
-      const shariahOk = preview.shariah?.status === "PASS";
-      const riskOk = preview.risk?.status === "PASS";
+      const agents = preview.agent_summary || {};
+      const shariahStatus = agents.shariah?.status || preview.shariah?.status || "-";
+      const quantSignal = agents.quant?.signal || "-";
+      const riskStatus = agents.risk?.status || preview.risk?.status || "-";
+      const shariahOk = shariahStatus === "PASS";
+      const quantOk = quantSignal === "BUY";
+      const riskOk = riskStatus === "PASS";
       setMetric(previewStatus, preview.status || "Unknown", ready ? "ok" : "bad");
       setMetric(previewNotional, preview.notional ? `$${Number(preview.notional).toFixed(2)}` : "-");
-      setMetric(previewShariah, preview.shariah?.status || preview.reason || "-", shariahOk ? "ok" : "bad");
-      setMetric(previewRisk, preview.risk?.status || "-", riskOk ? "ok" : "bad");
-      setMetric(approvalStatus, ready ? "Ready" : "Blocked", ready ? "ok" : "bad");
+      setMetric(previewShariah, shariahStatus, shariahOk ? "ok" : "bad");
+      setMetric(previewRisk, quantSignal, quantOk ? "ok" : "warn");
+      setMetric(approvalStatus, riskStatus, riskOk ? "ok" : "bad");
       setMetric(previewBroker, preview.broker_submission === false ? "Disabled" : "Enabled", preview.broker_submission === false ? "ok" : "bad");
       setBadge(approvalBadge, ready ? "Ready For Approval" : "Rejected", ready ? "ok" : "bad");
       setBadge(responseBadge, "Preview", ready ? "ok" : "bad");
@@ -735,22 +754,15 @@
       previewButton.disabled = true;
       approveButton.disabled = true;
       rejectButton.disabled = true;
-      setBadge(responseBadge, "Previewing", "warn");
-      rawOutput.textContent = "Preparing preview...";
+      setBadge(responseBadge, "Running", "warn");
+      rawOutput.textContent = "Running local agents...";
 
       try {
-        const payload = await postJson("/paper/preview", {
-          symbol: document.querySelector("#symbol").value,
-          side: document.querySelector("#side").value,
-          quantity: toNumber("quantity"),
-          price: toNumber("price"),
-          position_pct: toNumber("positionPct"),
-          total_exposure_pct: toNumber("totalExposurePct"),
-          loss_per_trade_pct: toNumber("lossPerTradePct"),
-          daily_loss_pct: toNumber("dailyLossPct"),
-          orders_today: toNumber("ordersToday"),
-        });
-        renderPreview(payload);
+        const candidate = candidatePayload();
+        const evaluationPayload = await postJson("/agent/evaluate", candidate);
+        const previewPayload = await postJson("/paper/preview", candidate);
+        renderPreview(previewPayload);
+        rawOutput.textContent = JSON.stringify({ agent_evaluation: evaluationPayload, paper_preview: previewPayload }, null, 2);
         renderAudit(await getJson("/audit"));
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
@@ -795,7 +807,7 @@
       setMetric(previewRisk, "-");
       setMetric(approvalStatus, "-");
       setMetric(previewBroker, "Disabled", "ok");
-      setBadge(approvalBadge, "Awaiting Preview", "warn");
+      setBadge(approvalBadge, "Awaiting Agents", "warn");
       setBadge(responseBadge, "Idle", "warn");
       approveButton.disabled = true;
       rejectButton.disabled = true;

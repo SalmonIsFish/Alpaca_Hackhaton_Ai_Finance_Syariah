@@ -17,6 +17,7 @@
 
    - `http://127.0.0.1:8000/health`
    - `http://127.0.0.1:8000/paper/status`
+   - `http://127.0.0.1:8000/agent/evaluate` (POST from dashboard)
    - `http://127.0.0.1:8000/audit`
 
 6. Open the local dashboard:
@@ -28,3 +29,5 @@
    `python test_local_api_smoke.py`
 
 The SQLite file `paper_trading.db` is created in this folder. The API is bound to localhost, approval is required, and live trading is disabled.
+
+The local multi-agent path is deterministic at this stage: Shariah agent, quant agent, and risk engine run before the approval queue. No LLM is required for the current workflow.
