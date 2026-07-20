@@ -46,6 +46,7 @@ def main() -> None:
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
+    assert "/approvals" in home_payload["routes"]
 
     health = client.get("/health")
     assert health.status_code == 200, health.text
@@ -196,8 +197,24 @@ def main() -> None:
     assert ready_approval.status_code == 200, ready_approval.text
     ready_approval_payload = ready_approval.json()
     assert ready_approval_payload["broker_submission"] is False
+    assert ready_approval_payload["queue_id"] > 0
     assert ready_approval_payload["approval"]["status"] == "APPROVED_PAPER_READY"
     assert ready_approval_payload["approval"]["broker_submission"] is False
+
+    approvals = client.get("/approvals")
+    assert approvals.status_code == 200, approvals.text
+    approvals_payload = approvals.json()
+    assert approvals_payload
+    latest_approval = approvals_payload[0]
+    assert latest_approval["symbol"] == "AAPL"
+    assert latest_approval["side"] == "BUY"
+    assert latest_approval["approval_status"] == "APPROVED_PAPER_READY"
+    assert latest_approval["execution_environment"] == "SIMULATE"
+    assert latest_approval["broker_submission"] is False
+    assert latest_approval["shariah_status"] == "PASS"
+    assert latest_approval["shariah_market"] == "US"
+    assert latest_approval["quant_signal"] == "BUY"
+    assert latest_approval["risk_status"] == "PASS"
 
     preview = client.post(
         "/paper/preview",
@@ -229,6 +246,7 @@ def main() -> None:
     assert approval.status_code == 200, approval.text
     approval_payload = approval.json()
     assert approval_payload["broker_submission"] is False
+    assert approval_payload["queue_id"] > 0
     assert approval_payload["approval"]["broker_submission"] is False
     assert approval_payload["approval"]["status"] == "REJECT"
 

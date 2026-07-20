@@ -360,14 +360,14 @@
       gap: 10px;
     }
 
-    .audit-list {
+    .queue-list, .audit-list {
       display: grid;
       gap: 8px;
       max-height: 320px;
       overflow: auto;
     }
 
-    .audit-item {
+    .queue-item, .audit-item {
       display: grid;
       grid-template-columns: 132px 1fr;
       gap: 10px;
@@ -376,6 +376,18 @@
       border-radius: var(--radius);
       padding: 10px;
       background: var(--panel-2);
+    }
+
+    .queue-item {
+      grid-template-columns: 100px 72px 1fr 104px;
+    }
+
+    .queue-meta {
+      display: grid;
+      gap: 3px;
+      color: var(--muted);
+      font-size: var(--font-sm);
+      line-height: 1.25;
     }
 
     .audit-item code {
@@ -424,7 +436,7 @@
         grid-column: span 1;
       }
 
-      .audit-item {
+      .queue-item, .audit-item {
         grid-template-columns: 1fr;
       }
     }
@@ -574,6 +586,14 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>Approval Queue</h2>
+            <span id="approvalQueueCount" class="badge warn">0 Orders</span>
+          </div>
+          <div id="approvalQueueList" class="queue-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>Audit History</h2>
             <span id="auditCount" class="badge warn">0 Events</span>
           </div>
@@ -608,6 +628,8 @@
     const approvalBadge = document.querySelector("#approvalBadge");
     const responseBadge = document.querySelector("#responseBadge");
     const rawOutput = document.querySelector("#rawOutput");
+    const approvalQueueList = document.querySelector("#approvalQueueList");
+    const approvalQueueCount = document.querySelector("#approvalQueueCount");
     const auditList = document.querySelector("#auditList");
     const auditCount = document.querySelector("#auditCount");
     let currentPreview = null;
@@ -723,9 +745,10 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, paper, audit] = await Promise.all([
+        const [health, paper, approvals, audit] = await Promise.all([
           getJson("/health"),
           getJson("/paper/status"),
+          getJson("/approvals"),
           getJson("/audit"),
         ]);
 
@@ -737,6 +760,7 @@
         setStat(paperMode, paperReady ? "Paper / SIMULATE" : "Unexpected", paperReady ? "ok" : "bad");
         setStat(approvalRequired, approvalReady ? "Required" : "Not required", approvalReady ? "ok" : "bad");
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
+        renderApprovalQueue(approvals);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
         rawOutput.textContent = JSON.stringify({ health, paper }, null, 2);
@@ -767,6 +791,35 @@
         item.className = "audit-item";
         item.innerHTML = `<span class="badge ok">${event.event_type}</span><code>${event.created_at}</code>`;
         auditList.append(item);
+      });
+    }
+
+    function renderApprovalQueue(items) {
+      approvalQueueList.replaceChildren();
+      setBadge(approvalQueueCount, `${items.length} ${items.length === 1 ? "Order" : "Orders"}`, items.length ? "ok" : "warn");
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "queue-item";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><div class=\"queue-meta\">No approval queue records yet.</div>";
+        approvalQueueList.append(empty);
+        return;
+      }
+      items.slice(0, 20).forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "queue-item";
+        const statusClass = item.approval_status === "APPROVED_PAPER_READY" ? "ok" : item.approval_status === "REJECT" ? "bad" : "warn";
+        const notional = item.notional == null ? "-" : `$${Number(item.notional).toFixed(2)}`;
+        const execution = item.execution_environment || "PENDING";
+        row.innerHTML = `
+          <span class="badge ${statusClass}">${item.approval_status}</span>
+          <strong>${item.symbol}</strong>
+          <div class="queue-meta">
+            <span>${item.side} ${item.quantity ?? "-"} @ ${item.price ?? "-"}</span>
+            <span>${notional} · Shariah ${item.shariah_status || "-"} / ${item.shariah_market || "-"} · Quant ${item.quant_signal || "-"} · Risk ${item.risk_status || "-"}</span>
+          </div>
+          <span class="badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker On" : execution}</span>
+        `;
+        approvalQueueList.append(row);
       });
     }
 
@@ -813,6 +866,7 @@
         setBadge(approvalBadge, approved ? "Approved" : "Rejected", approved ? "ok" : "warn");
         setBadge(responseBadge, "Approval", approved ? "ok" : "warn");
         rawOutput.textContent = JSON.stringify(payload, null, 2);
+        renderApprovalQueue(await getJson("/approvals"));
         renderAudit(await getJson("/audit"));
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");

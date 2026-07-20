@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from agent_coordinator import evaluate_candidate
+from approval_queue import ensure_approval_queue, list_approvals, record_approval
 from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
@@ -30,6 +31,7 @@ def db() -> sqlite3.Connection:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL)")
+    ensure_approval_queue(connection)
     connection.commit()
     return connection
 
@@ -70,7 +72,7 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/paper/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/audit"],
+        "routes": ["/health", "/paper/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/approvals", "/audit"],
         "live_trading": False,
     }
 
@@ -172,9 +174,14 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
     }
     approval = approve_candidate(candidate, approved_by_user=request.approved)
     approval["broker_submission"] = False
+    connection = db()
+    try:
+        queue_item = record_approval(connection, preview=preview, approval=approval, approved_by_user=request.approved)
+    finally:
+        connection.close()
     payload = {"approved_by_user": request.approved, "approval": approval, "preview": preview}
     audit = add_audit_event("paper_approval", payload)
-    return {"approval_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "approval": approval}
+    return {"approval_id": audit["id"], "queue_id": queue_item["id"], "created_at": audit["created_at"], "broker_submission": False, "approval": approval}
 
 
 @app.post("/audit")
@@ -188,5 +195,14 @@ def list_audit() -> list[dict]:
     try:
         rows = connection.execute("SELECT id, created_at, event_type, payload FROM audit_events ORDER BY id DESC LIMIT 100").fetchall()
         return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+@app.get("/approvals")
+def approvals() -> list[dict]:
+    connection = db()
+    try:
+        return list_approvals(connection)
     finally:
         connection.close()
