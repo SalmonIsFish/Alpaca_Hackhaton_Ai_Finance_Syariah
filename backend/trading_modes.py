@@ -25,7 +25,7 @@ def mode_capabilities(mode: str) -> dict:
         "approval": {
             "agents_can_recommend": True,
             "human_approval_required": True,
-            "paper_execution_allowed": False,
+            "paper_execution_allowed": True,
             "autonomous_execution_allowed": False,
         },
         "autonomous_paper": {
@@ -41,12 +41,14 @@ def mode_capabilities(mode: str) -> dict:
 def trading_mode_status() -> dict:
     settings = load_settings()
     capabilities = mode_capabilities(settings.trading_mode)
+    broker_submission = settings.paper_execution_enabled and settings.paper_execution_adapter in {"fake", "moomoo"}
     return {
         "trading_mode": settings.trading_mode,
         "paper_execution_enabled": settings.paper_execution_enabled,
+        "paper_execution_adapter": settings.paper_execution_adapter,
         "effective_paper_execution_allowed": capabilities["paper_execution_allowed"] and settings.paper_execution_enabled,
         "capabilities": capabilities,
         "agent_team": AGENT_TEAM,
         "live_trading": False,
-        "broker_submission": False,
+        "broker_submission": broker_submission,
     }

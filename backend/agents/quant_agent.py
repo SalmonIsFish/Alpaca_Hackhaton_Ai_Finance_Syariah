@@ -12,16 +12,38 @@ def _evaluate_s001_signal(bars: list[dict]) -> dict:
     closes = [float(bar["close"]) for bar in bars]
     sma50 = sum(closes[-50:]) / 50
     sma200 = sum(closes[-200:]) / 200
-    breakout = closes[-1] >= max(closes[-56:-1])
-    if sma50 > sma200 and breakout:
-        return {"signal": "BUY", "reason": "trend_and_breakout_confirmed", "sma50": sma50, "sma200": sma200}
-    return {"signal": "NO_SIGNAL", "reason": "strategy_conditions_not_met", "sma50": sma50, "sma200": sma200}
+    breakout_level = max(closes[-56:-1])
+    latest_close = closes[-1]
+    trend_ok = sma50 > sma200
+    breakout = latest_close >= breakout_level
+    breakout_gap_pct = round(((latest_close / breakout_level) - 1) * 100, 4) if breakout_level else None
+    if trend_ok and breakout:
+        return {
+            "signal": "BUY",
+            "reason": "trend_and_breakout_confirmed",
+            "sma50": sma50,
+            "sma200": sma200,
+            "trend_ok": trend_ok,
+            "breakout_ok": breakout,
+            "breakout_level": breakout_level,
+            "breakout_gap_pct": breakout_gap_pct,
+        }
+    return {
+        "signal": "NO_SIGNAL",
+        "reason": "strategy_conditions_not_met",
+        "sma50": sma50,
+        "sma200": sma200,
+        "trend_ok": trend_ok,
+        "breakout_ok": breakout,
+        "breakout_level": breakout_level,
+        "breakout_gap_pct": breakout_gap_pct,
+    }
 
 
-def evaluate_quant(symbol: str) -> dict:
+def evaluate_quant(symbol: str, *, allow_fallback: bool = True) -> dict:
     end_date = date.today()
     start_date = end_date - timedelta(days=320)
-    bars, source = fetch_eod_prices(symbol, start_date.isoformat(), end_date.isoformat(), allow_fallback=True)
+    bars, source = fetch_eod_prices(symbol, start_date.isoformat(), end_date.isoformat(), allow_fallback=allow_fallback)
     strategy = _evaluate_s001_signal(bars)
     close = float(bars[-1]["close"]) if bars else None
     return {

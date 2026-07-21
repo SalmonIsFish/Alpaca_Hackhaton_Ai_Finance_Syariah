@@ -38,6 +38,7 @@ class Settings:
     moomoo_host: str
     moomoo_port: int
     paper_execution_enabled: bool
+    paper_execution_adapter: str
 
 
 def load_settings() -> Settings:
@@ -66,4 +67,5 @@ def load_settings() -> Settings:
         moomoo_host=os.getenv("MOOMOO_HOST", "127.0.0.1"),
         moomoo_port=port,
         paper_execution_enabled=paper_execution_enabled,
+        paper_execution_adapter=os.getenv("PAPER_EXECUTION_ADAPTER", "disabled").strip().lower(),
     )

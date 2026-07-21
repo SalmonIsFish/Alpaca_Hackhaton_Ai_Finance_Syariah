@@ -15,6 +15,7 @@ from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
+from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order
 from trading_modes import trading_mode_status
 
@@ -39,6 +40,10 @@ def db() -> sqlite3.Connection:
     return connection
 
 
+def broker_submission_configured(settings) -> bool:
+    return settings.paper_execution_enabled and settings.paper_execution_adapter in {"fake", "moomoo"}
+
+
 class PaperPreviewRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=16)
     side: str = "BUY"
@@ -54,6 +59,13 @@ class PaperPreviewRequest(BaseModel):
 class PaperApprovalRequest(BaseModel):
     preview: dict
     approved: bool
+
+
+class PaperExecutionRequest(BaseModel):
+    confirmation_phrase: str | None = None
+
+
+PAPER_EXECUTION_CONFIRMATION = "EXECUTE PAPER"
 
 
 def add_audit_event(event_type: str, payload: dict) -> dict:
@@ -73,26 +85,44 @@ def add_audit_event(event_type: str, payload: dict) -> dict:
 @app.get("/")
 def home() -> dict:
     settings = load_settings()
+    broker_submission = broker_submission_configured(settings)
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/system/mode", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
+        "routes": ["/health", "/system/mode", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/opportunities", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
         "live_trading": False,
         "trading_mode": settings.trading_mode,
         "paper_execution_enabled": settings.paper_execution_enabled,
+        "paper_execution_adapter": settings.paper_execution_adapter,
+        "broker_submission": broker_submission,
     }
 
 
 @app.get("/health")
 def health() -> dict:
     settings = load_settings()
-    return {"status": "ok", "mode": settings.moomoo_mode, "trading_mode": settings.trading_mode, "paper_execution_enabled": settings.paper_execution_enabled, "broker_submission": False}
+    return {
+        "status": "ok",
+        "mode": settings.moomoo_mode,
+        "trading_mode": settings.trading_mode,
+        "paper_execution_enabled": settings.paper_execution_enabled,
+        "paper_execution_adapter": settings.paper_execution_adapter,
+        "broker_submission": broker_submission_configured(settings),
+    }
 
 
 @app.get("/paper/status")
 def paper_status() -> dict:
     settings = load_settings()
-    return {"mode": "SIMULATE", "trading_mode": settings.trading_mode, "approval_required": settings.trading_mode == "approval", "paper_execution_enabled": settings.paper_execution_enabled, "live_trading": False, "broker_submission": False}
+    return {
+        "mode": "SIMULATE",
+        "trading_mode": settings.trading_mode,
+        "approval_required": settings.trading_mode == "approval",
+        "paper_execution_enabled": settings.paper_execution_enabled,
+        "paper_execution_adapter": settings.paper_execution_adapter,
+        "live_trading": False,
+        "broker_submission": broker_submission_configured(settings),
+    }
 
 
 @app.get("/system/mode")
@@ -103,6 +133,22 @@ def system_mode() -> dict:
 @app.get("/market-data/{symbol}")
 def market_data_status(symbol: str) -> dict:
     return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
+
+
+@app.get("/opportunities")
+def opportunities(symbols: str | None = None, alert_threshold_pct: float = 3.0) -> dict:
+    scan = scan_opportunities(symbols, alert_threshold_pct=alert_threshold_pct)
+    audit = add_audit_event(
+        "opportunity_scan",
+        {
+            "count": scan["count"],
+            "ready_count": scan["ready_count"],
+            "alert_count": scan["alert_count"],
+            "alert_threshold_pct": alert_threshold_pct,
+            "symbols": [item["symbol"] for item in scan["items"]],
+        },
+    )
+    return {"scan_id": audit["id"], "created_at": audit["created_at"], **scan}
 
 
 @app.get("/moomoo/status")
@@ -228,7 +274,18 @@ def approvals() -> list[dict]:
 
 
 @app.post("/paper/execute/{queue_id}")
-def execute_paper(queue_id: int) -> dict:
+def execute_paper(queue_id: int, request: PaperExecutionRequest | None = None) -> dict:
+    if request is None or request.confirmation_phrase != PAPER_EXECUTION_CONFIRMATION:
+        result = {
+            "status": "CONFIRMATION_REQUIRED",
+            "queue_id": queue_id,
+            "message": "confirmation_phrase must exactly equal EXECUTE PAPER",
+            "required_confirmation": PAPER_EXECUTION_CONFIRMATION,
+            "broker_submission": False,
+        }
+        audit = add_audit_event("paper_execution_rejected", result)
+        return {"execution_id": audit["id"], "created_at": audit["created_at"], **result}
+
     connection = db()
     try:
         result = execute_paper_order(connection, queue_id)

@@ -42,11 +42,14 @@ def main() -> None:
     assert home_payload["live_trading"] is False
     assert home_payload["trading_mode"] == "approval"
     assert home_payload["paper_execution_enabled"] is False
+    assert home_payload["paper_execution_adapter"] == "disabled"
+    assert home_payload["broker_submission"] is False
     assert "/health" in home_payload["routes"]
     assert "/system/mode" in home_payload["routes"]
     assert "/paper/status" in home_payload["routes"]
     assert "/moomoo/status" in home_payload["routes"]
     assert "/market-data/{symbol}" in home_payload["routes"]
+    assert "/opportunities" in home_payload["routes"]
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
@@ -60,12 +63,14 @@ def main() -> None:
     assert health_payload["mode"] == "paper"
     assert health_payload["trading_mode"] == "approval"
     assert health_payload["paper_execution_enabled"] is False
+    assert health_payload["paper_execution_adapter"] == "disabled"
     assert health_payload["broker_submission"] is False
 
     system_mode = client.get("/system/mode")
     assert system_mode.status_code == 200, system_mode.text
     system_mode_payload = system_mode.json()
     assert system_mode_payload["trading_mode"] == "approval"
+    assert system_mode_payload["paper_execution_adapter"] == "disabled"
     assert system_mode_payload["capabilities"]["agents_can_recommend"] is True
     assert system_mode_payload["capabilities"]["human_approval_required"] is True
     assert system_mode_payload["effective_paper_execution_allowed"] is False
@@ -79,6 +84,7 @@ def main() -> None:
     assert paper_payload["trading_mode"] == "approval"
     assert paper_payload["approval_required"] is True
     assert paper_payload["paper_execution_enabled"] is False
+    assert paper_payload["paper_execution_adapter"] == "disabled"
     assert paper_payload["live_trading"] is False
     assert paper_payload["broker_submission"] is False
     assert detect_market("0001") == "MY"
@@ -99,6 +105,76 @@ def main() -> None:
     assert market_payload["source"] in {"fixture", "fixture_after_tiingo_error"}
     assert market_payload["bars"] == 2
     assert market_payload["enough_history"] is False
+
+    original_scan_evaluate_candidate = local_api.scan_opportunities.__globals__["evaluate_candidate"]
+    original_scan_evaluate_quant = local_api.scan_opportunities.__globals__["evaluate_quant"]
+    local_api.scan_opportunities.__globals__["evaluate_quant"] = lambda symbol, allow_fallback=False: {
+        "agent": "quant",
+        "status": "PASS" if symbol == "AAPL" else "NO_SIGNAL",
+        "symbol": symbol,
+        "signal": "BUY" if symbol == "AAPL" else "NO_SIGNAL",
+        "reason": "test",
+        "price": 100.0,
+        "bars": 200,
+        "price_source": "test",
+        "strategy": {
+            "signal": "BUY" if symbol == "AAPL" else "NO_SIGNAL",
+            "sma50": 120.0,
+            "sma200": 100.0,
+            "trend_ok": True,
+            "breakout_ok": symbol == "AAPL",
+            "breakout_level": 99.0,
+            "breakout_gap_pct": 1.0,
+        },
+    }
+    local_api.scan_opportunities.__globals__["evaluate_candidate"] = lambda **kwargs: {
+        "symbol": kwargs["symbol"],
+        "side": "BUY",
+        "quantity": 1,
+        "price": 98.0 if kwargs["symbol"] == "MSFT" else 100.0,
+        "notional": 98.0 if kwargs["symbol"] == "MSFT" else 100.0,
+        "decision": "READY_FOR_APPROVAL" if kwargs["symbol"] == "AAPL" else "BLOCKED",
+        "blockers": [] if kwargs["symbol"] == "AAPL" else ["quant_no_buy_signal"],
+        "broker_submission": False,
+        "agent_summary": {
+            "shariah": {"status": "PASS", "reason": "COMPLIANT", "market": "US"},
+            "quant": {
+                "signal": "BUY" if kwargs["symbol"] == "AAPL" else "NO_SIGNAL",
+                "reason": "test",
+                "price_source": "test",
+                "bars": 200,
+                "strategy": {
+                    "sma50": 120.0,
+                    "sma200": 100.0,
+                    "trend_ok": True,
+                    "breakout_ok": kwargs["symbol"] == "AAPL",
+                    "breakout_level": 99.0,
+                    "breakout_gap_pct": 1.0,
+                },
+            },
+            "risk": {"status": "PASS"},
+        },
+    }
+    try:
+        opportunities = client.get("/opportunities?symbols=MSFT,AAPL&alert_threshold_pct=2.0")
+    finally:
+        local_api.scan_opportunities.__globals__["evaluate_candidate"] = original_scan_evaluate_candidate
+        local_api.scan_opportunities.__globals__["evaluate_quant"] = original_scan_evaluate_quant
+    assert opportunities.status_code == 200, opportunities.text
+    opportunities_payload = opportunities.json()
+    assert opportunities_payload["count"] == 2
+    assert opportunities_payload["ready_count"] == 1
+    assert opportunities_payload["alert_count"] == 1
+    assert opportunities_payload["data_error_count"] == 0
+    assert opportunities_payload["items"][0]["symbol"] == "AAPL"
+    assert opportunities_payload["items"][0]["ready_for_approval"] is True
+    assert opportunities_payload["items"][0]["watch_status"] == "READY"
+    assert opportunities_payload["items"][0]["trend_ok"] is True
+    assert opportunities_payload["items"][0]["breakout_ok"] is True
+    assert opportunities_payload["items"][0]["breakout_gap_pct"] == 1.0
+    assert opportunities_payload["items"][0]["trigger_price"] == 99.0
+    assert opportunities_payload["items"][0]["distance_to_trigger"] == -1.0
+    assert opportunities_payload["items"][1]["alert_status"] == "ALERT"
 
     agent_evaluation = client.post(
         "/agent/evaluate",
@@ -244,7 +320,26 @@ def main() -> None:
     assert latest_approval["quant_signal"] == "BUY"
     assert latest_approval["risk_status"] == "PASS"
 
-    locked_execution = client.post(f"/paper/execute/{ready_approval_payload['queue_id']}")
+    missing_confirmation = client.post(f"/paper/execute/{ready_approval_payload['queue_id']}", json={})
+    assert missing_confirmation.status_code == 200, missing_confirmation.text
+    missing_confirmation_payload = missing_confirmation.json()
+    assert missing_confirmation_payload["status"] == "CONFIRMATION_REQUIRED"
+    assert missing_confirmation_payload["required_confirmation"] == "EXECUTE PAPER"
+    assert missing_confirmation_payload["broker_submission"] is False
+
+    wrong_confirmation = client.post(
+        f"/paper/execute/{ready_approval_payload['queue_id']}",
+        json={"confirmation_phrase": "execute paper"},
+    )
+    assert wrong_confirmation.status_code == 200, wrong_confirmation.text
+    wrong_confirmation_payload = wrong_confirmation.json()
+    assert wrong_confirmation_payload["status"] == "CONFIRMATION_REQUIRED"
+    assert wrong_confirmation_payload["broker_submission"] is False
+
+    locked_execution = client.post(
+        f"/paper/execute/{ready_approval_payload['queue_id']}",
+        json={"confirmation_phrase": "EXECUTE PAPER"},
+    )
     assert locked_execution.status_code == 200, locked_execution.text
     locked_execution_payload = locked_execution.json()
     assert locked_execution_payload["status"] == "EXECUTION_LOCKED"
@@ -286,7 +381,10 @@ def main() -> None:
     assert approval_payload["approval"]["paper_execution_enabled"] is False
     assert approval_payload["approval"]["status"] == "REJECT"
 
-    rejected_execution = client.post(f"/paper/execute/{approval_payload['queue_id']}")
+    rejected_execution = client.post(
+        f"/paper/execute/{approval_payload['queue_id']}",
+        json={"confirmation_phrase": "EXECUTE PAPER"},
+    )
     assert rejected_execution.status_code == 200, rejected_execution.text
     rejected_execution_payload = rejected_execution.json()
     assert rejected_execution_payload["execution_status"] == "NOT_APPROVED"

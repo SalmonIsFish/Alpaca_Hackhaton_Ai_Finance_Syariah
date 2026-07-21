@@ -187,3 +187,39 @@ def update_execution_status(connection: sqlite3.Connection, approval_id: int, *,
     )
     connection.commit()
     return {"id": approval_id, "execution_status": status, "execution_message": message, "executed_at": executed_at}
+
+
+def record_broker_submission(connection: sqlite3.Connection, approval_id: int, *, broker_response: dict) -> dict:
+    ensure_approval_queue(connection)
+    executed_at = broker_response.get("submitted_at") or datetime.now(timezone.utc).isoformat()
+    row = connection.execute("SELECT payload FROM approval_queue WHERE id = ?", (approval_id,)).fetchone()
+    payload = {}
+    if row is not None:
+        try:
+            payload = json.loads(row["payload"])
+        except (TypeError, json.JSONDecodeError):
+            payload = {"raw_payload": row["payload"]}
+    payload["broker_submission"] = broker_response
+    status = broker_response.get("status", "BROKER_SUBMITTED")
+    message = broker_response.get("broker_order_id") or broker_response.get("reason") or "paper order submitted"
+    connection.execute(
+        """
+        UPDATE approval_queue
+        SET broker_submission = 1,
+            execution_status = ?,
+            execution_message = ?,
+            executed_at = ?,
+            payload = ?
+        WHERE id = ?
+        """,
+        (status, message, executed_at, json.dumps(payload, sort_keys=True), approval_id),
+    )
+    connection.commit()
+    return {
+        "id": approval_id,
+        "broker_submission": True,
+        "execution_status": status,
+        "execution_message": message,
+        "executed_at": executed_at,
+        "broker_response": broker_response,
+    }

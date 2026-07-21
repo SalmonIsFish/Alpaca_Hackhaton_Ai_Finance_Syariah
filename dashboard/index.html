@@ -407,6 +407,61 @@
       overflow-wrap: anywhere;
     }
 
+    .opportunity-controls {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 110px 120px auto;
+      align-items: end;
+      margin-top: 12px;
+    }
+
+    .monitor-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      align-items: center;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: var(--font-sm);
+    }
+
+    .monitor-toggle {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      min-height: 32px;
+    }
+
+    .monitor-toggle input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    .opportunity-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .opportunity-item {
+      display: grid;
+      grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .opportunity-item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
     .audit-item code {
       color: var(--muted);
       font-size: var(--font-sm);
@@ -445,7 +500,7 @@
         width: 100%;
       }
 
-      .status-strip, .order-grid, .summary-grid, .approval-actions {
+      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls {
         grid-template-columns: 1fr;
       }
 
@@ -553,6 +608,33 @@
 
         <section class="panel raw-panel">
           <div class="panel-head">
+            <h2>Opportunities</h2>
+            <span id="opportunityBadge" class="badge warn">Not scanned</span>
+          </div>
+          <div class="opportunity-controls">
+            <label>Watchlist
+              <input id="opportunitySymbols" type="text" value="AAPL, AMZN, TSLA, CRM, INTC, AMD, ASML, TSM, SHOP, PANW, ANET">
+            </label>
+            <label>Alert %
+              <input id="alertThresholdPct" type="number" min="0.1" max="20" step="0.1" value="3.0">
+            </label>
+            <label>Every Min
+              <input id="autoScanMinutes" type="number" min="1" max="60" step="1" value="5">
+            </label>
+            <button id="scanButton" class="secondary" type="button">Scan</button>
+          </div>
+          <div class="monitor-strip">
+            <label class="monitor-toggle">
+              <input id="autoScanToggle" type="checkbox">
+              <span>Auto Scan</span>
+            </label>
+            <span id="lastScanStatus">Last scanned: never</span>
+          </div>
+          <div id="opportunityList" class="opportunity-list"></div>
+        </section>
+
+        <section class="panel raw-panel">
+          <div class="panel-head">
             <h2>Raw Response</h2>
             <span id="responseBadge" class="badge warn">Idle</span>
           </div>
@@ -647,6 +729,7 @@
     const previewForm = document.querySelector("#previewForm");
     const previewButton = document.querySelector("#previewButton");
     const resetButton = document.querySelector("#resetButton");
+    const scanButton = document.querySelector("#scanButton");
     const approveButton = document.querySelector("#approveButton");
     const rejectButton = document.querySelector("#rejectButton");
     const apiConnection = document.querySelector("#apiConnection");
@@ -674,7 +757,16 @@
     const approvalQueueCount = document.querySelector("#approvalQueueCount");
     const auditList = document.querySelector("#auditList");
     const auditCount = document.querySelector("#auditCount");
+    const opportunitySymbols = document.querySelector("#opportunitySymbols");
+    const alertThresholdPct = document.querySelector("#alertThresholdPct");
+    const autoScanMinutes = document.querySelector("#autoScanMinutes");
+    const autoScanToggle = document.querySelector("#autoScanToggle");
+    const lastScanStatus = document.querySelector("#lastScanStatus");
+    const opportunityList = document.querySelector("#opportunityList");
+    const opportunityBadge = document.querySelector("#opportunityBadge");
     let currentPreview = null;
+    let autoScanTimer = null;
+    let scanInFlight = false;
 
     function apiBase() {
       return apiBaseInput.value.replace(/\/+$/, "");
@@ -697,6 +789,43 @@
     function setBadge(element, text, state) {
       element.textContent = text;
       setClass(element, `badge ${state}`);
+    }
+
+    function formatLocalTime(value) {
+      const date = value ? new Date(value) : new Date();
+      return date.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+
+    function autoScanIntervalMs() {
+      const minutes = Math.max(1, Math.min(60, Number(autoScanMinutes.value) || 5));
+      autoScanMinutes.value = String(minutes);
+      return minutes * 60 * 1000;
+    }
+
+    function stopAutoScan() {
+      if (autoScanTimer) {
+        window.clearInterval(autoScanTimer);
+        autoScanTimer = null;
+      }
+      autoScanToggle.checked = false;
+    }
+
+    function startAutoScan() {
+      stopAutoScan();
+      autoScanToggle.checked = true;
+      const minutes = Number(autoScanMinutes.value) || 5;
+      lastScanStatus.textContent = `Last scanned: waiting | Auto every ${minutes} min`;
+      autoScanTimer = window.setInterval(() => {
+        if (!scanInFlight) {
+          scanOpportunities({ source: "auto" });
+        }
+      }, autoScanIntervalMs());
     }
 
     function toNumber(id) {
@@ -859,6 +988,50 @@
       });
     }
 
+    function renderOpportunities(payload) {
+      const items = payload.items || [];
+      opportunityList.replaceChildren();
+      const dataErrors = payload.data_error_count || 0;
+      const alerts = payload.alert_count || 0;
+      const badgeText = dataErrors ? `${dataErrors} Data Errors / ${items.length} Scanned` : `${payload.ready_count || 0} Ready / ${alerts} Alerts / ${items.length} Scanned`;
+      setBadge(opportunityBadge, badgeText, payload.ready_count ? "ok" : dataErrors ? "bad" : "warn");
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "opportunity-item";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><div class=\"queue-meta\">No symbols scanned.</div>";
+        opportunityList.append(empty);
+        return;
+      }
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "opportunity-item";
+        const nearBreakout = item.watch_status === "NEAR_BREAKOUT";
+        const blocked = item.watch_status === "BLOCKED";
+        const dataError = item.watch_status === "DATA_ERROR";
+        const alert = item.alert_status === "ALERT";
+        const state = item.ready_for_approval ? "ok" : blocked || dataError ? "bad" : "warn";
+        const label = item.ready_for_approval ? "Ready" : alert ? "Alert" : nearBreakout ? "Near" : dataError ? "Data Error" : blocked ? "Blocked" : "Not Ready";
+        const price = item.price == null ? "-" : `$${Number(item.price).toFixed(2)}`;
+        const gap = item.breakout_gap_pct == null ? "-" : `${Number(item.breakout_gap_pct).toFixed(2)}%`;
+        const trigger = item.trigger_price == null ? "-" : `$${Number(item.trigger_price).toFixed(2)}`;
+        const distance = item.distance_to_trigger == null ? "-" : `$${Number(item.distance_to_trigger).toFixed(2)}`;
+        const blockers = item.blockers.length ? item.blockers.join(", ") : "ready";
+        const trend = item.trend_ok === true ? "Trend OK" : item.trend_ok === false ? "Trend Fail" : "Trend -";
+        const breakout = item.breakout_ok === true ? "Breakout OK" : item.breakout_ok === false ? "Breakout Pending" : "Breakout -";
+        const ticketButton = dataError ? "" : `<button class="secondary queue-action" type="button" data-opportunity-symbol="${item.symbol}" data-opportunity-price="${item.price ?? ""}">Use In Ticket</button>`;
+        row.innerHTML = `
+          <span class="badge ${state}">${label}</span>
+          <div class="queue-meta">
+            <strong>${item.symbol}</strong>
+            <span>${price} | Source ${item.price_source || "-"} | Bars ${item.bars ?? "-"} | Shariah ${item.shariah_status || "-"} | Quant ${item.quant_signal || "-"} | Risk ${item.risk_status || "-"}</span>
+            <span>${trend} | ${breakout} | Trigger ${trigger} | Distance ${distance} | Gap ${gap} | ${blockers}</span>
+            ${ticketButton}
+          </div>
+        `;
+        opportunityList.append(row);
+      });
+    }
+
     function renderApprovalQueue(items) {
       approvalQueueList.replaceChildren();
       setBadge(approvalQueueCount, `${items.length} ${items.length === 1 ? "Order" : "Orders"}`, items.length ? "ok" : "warn");
@@ -890,12 +1063,50 @@
       });
     }
 
+    async function scanOpportunities(options = {}) {
+      if (scanInFlight) {
+        return;
+      }
+      scanInFlight = true;
+      scanButton.disabled = true;
+      const source = options.source || "manual";
+      setBadge(opportunityBadge, source === "auto" ? "Auto Scanning" : "Scanning", "warn");
+      rawOutput.textContent = source === "auto" ? "Auto scanning watchlist..." : "Scanning watchlist...";
+      try {
+        const threshold = Number(alertThresholdPct.value) || 3;
+        const payload = await getJson(`/opportunities?symbols=${encodeURIComponent(opportunitySymbols.value)}&alert_threshold_pct=${encodeURIComponent(threshold)}`);
+        renderOpportunities(payload);
+        renderAudit(await getJson("/audit"));
+        setBadge(responseBadge, "Opportunities", payload.ready_count ? "ok" : "warn");
+        const alertText = payload.alert_count ? ` | ${payload.alert_count} alerts` : "";
+        lastScanStatus.textContent = `Last scanned: ${formatLocalTime(payload.created_at)}${alertText}`;
+        rawOutput.textContent = JSON.stringify(payload, null, 2);
+      } catch (error) {
+        setBadge(opportunityBadge, "Error", "bad");
+        setBadge(responseBadge, "Error", "bad");
+        lastScanStatus.textContent = `Last scanned: error at ${formatLocalTime()}`;
+        rawOutput.textContent = String(error);
+      } finally {
+        scanButton.disabled = false;
+        scanInFlight = false;
+      }
+    }
+
     async function executeQueuedPaper(queueId) {
+      const confirmationPhrase = window.prompt("Type EXECUTE PAPER to continue.");
+      if (confirmationPhrase === null) {
+        setBadge(responseBadge, "Cancelled", "warn");
+        rawOutput.textContent = "Paper execution confirmation was cancelled.";
+        return;
+      }
       setBadge(responseBadge, "Executing", "warn");
       rawOutput.textContent = "Checking paper execution lock...";
       try {
-        const payload = await postJson(`/paper/execute/${queueId}`, {});
-        setBadge(responseBadge, payload.status === "EXECUTION_LOCKED" ? "Locked" : "Execution", payload.broker_submission ? "bad" : "warn");
+        const payload = await postJson(`/paper/execute/${queueId}`, {
+          confirmation_phrase: confirmationPhrase,
+        });
+        const lockedOrRejected = payload.status === "EXECUTION_LOCKED" || payload.status === "CONFIRMATION_REQUIRED";
+        setBadge(responseBadge, lockedOrRejected ? "Locked" : "Execution", payload.broker_submission ? "bad" : "warn");
         rawOutput.textContent = JSON.stringify(payload, null, 2);
         renderApprovalQueue(await getJson("/approvals"));
         renderAudit(await getJson("/audit"));
@@ -983,8 +1194,37 @@
     refreshButton.addEventListener("click", refreshStatus);
     previewForm.addEventListener("submit", createPreview);
     resetButton.addEventListener("click", resetTicket);
+    scanButton.addEventListener("click", () => scanOpportunities({ source: "manual" }));
+    autoScanToggle.addEventListener("change", () => {
+      if (autoScanToggle.checked) {
+        startAutoScan();
+        scanOpportunities({ source: "auto" });
+      } else {
+        stopAutoScan();
+        lastScanStatus.textContent = "Last scanned: auto scan off";
+      }
+    });
+    autoScanMinutes.addEventListener("change", () => {
+      autoScanIntervalMs();
+      if (autoScanToggle.checked) {
+        startAutoScan();
+      }
+    });
+    window.addEventListener("beforeunload", stopAutoScan);
     approveButton.addEventListener("click", () => submitApproval(true));
     rejectButton.addEventListener("click", () => submitApproval(false));
+    opportunityList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-opportunity-symbol]");
+      if (!button) {
+        return;
+      }
+      document.querySelector("#symbol").value = button.dataset.opportunitySymbol;
+      if (button.dataset.opportunityPrice) {
+        document.querySelector("#price").value = Number(button.dataset.opportunityPrice).toFixed(2);
+      }
+      setBadge(responseBadge, "Ticket", "ok");
+      rawOutput.textContent = `Loaded ${button.dataset.opportunitySymbol} into the order ticket. Run agents before approval.`;
+    });
     approvalQueueList.addEventListener("click", (event) => {
       const button = event.target.closest("[data-execute-id]");
       if (button) {

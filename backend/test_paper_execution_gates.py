@@ -1,0 +1,138 @@
+"""Verify paper execution gates without contacting Moomoo."""
+
+import json
+import os
+import sqlite3
+
+import paper_execution
+from approval_queue import get_approval, record_approval
+from paper_execution import execute_paper_order
+
+
+READY_MOOMOO = {
+    "status": "paper_account_ready",
+    "paper_account_ready": True,
+    "environment": "SIMULATE",
+    "account_type": "CASH",
+    "account_status": "ACTIVE",
+    "account_suffix": "1234",
+    "broker_submission": False,
+}
+
+
+NOT_READY_MOOMOO = {
+    "status": "paper_account_missing",
+    "paper_account_ready": False,
+    "reason": "active_simulate_cash_account_not_found",
+    "broker_submission": False,
+}
+
+
+def make_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS", risk_status: str = "PASS") -> int:
+    preview = {
+        "status": "READY_FOR_APPROVAL",
+        "execution": "PAPER_ONLY",
+        "broker_submission": False,
+        "symbol": "AAPL",
+        "side": "BUY",
+        "quantity": 1,
+        "price": 333.74,
+        "notional": 333.74,
+        "agent_summary": {
+            "shariah": {"status": shariah_status, "market": "US", "provider": "ZOYA"},
+            "quant": {"status": "PASS", "signal": "BUY"},
+            "risk": {"status": risk_status},
+        },
+    }
+    approval = {
+        "status": "APPROVED_PAPER_READY",
+        "broker_submission": False,
+        "execution_environment": "SIMULATE",
+    }
+    return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)["id"]
+
+
+def set_execution_env(*, trading_mode: str = "approval", enabled: bool = True, adapter: str = "disabled") -> None:
+    os.environ["TRADING_MODE"] = trading_mode
+    os.environ["PAPER_EXECUTION_ENABLED"] = "true" if enabled else "false"
+    os.environ["PAPER_EXECUTION_ADAPTER"] = adapter
+
+
+def main() -> None:
+    original_env = {key: os.environ.get(key) for key in ["TRADING_MODE", "PAPER_EXECUTION_ENABLED", "PAPER_EXECUTION_ADAPTER"]}
+    original_moomoo_status = paper_execution.check_moomoo_status
+    try:
+        connection = make_connection()
+        paper_execution.check_moomoo_status = lambda: READY_MOOMOO
+
+        set_execution_env(trading_mode="advisory", enabled=True, adapter="fake")
+        advisory_id = add_approval(connection)
+        advisory_result = execute_paper_order(connection, advisory_id)
+        assert advisory_result["status"] == "TRADING_MODE_BLOCKED"
+        assert advisory_result["broker_submission"] is False
+
+        set_execution_env(trading_mode="approval", enabled=False, adapter="fake")
+        locked_id = add_approval(connection)
+        locked_result = execute_paper_order(connection, locked_id)
+        assert locked_result["status"] == "EXECUTION_LOCKED"
+        assert locked_result["broker_submission"] is False
+
+        set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
+        shariah_id = add_approval(connection, shariah_status="FAIL")
+        shariah_result = execute_paper_order(connection, shariah_id)
+        assert shariah_result["status"] == "SHARIAH_GATE_FAILED"
+        assert shariah_result["broker_submission"] is False
+
+        risk_id = add_approval(connection, risk_status="FAIL")
+        risk_result = execute_paper_order(connection, risk_id)
+        assert risk_result["status"] == "RISK_GATE_FAILED"
+        assert risk_result["broker_submission"] is False
+
+        paper_execution.check_moomoo_status = lambda: NOT_READY_MOOMOO
+        moomoo_id = add_approval(connection)
+        moomoo_result = execute_paper_order(connection, moomoo_id)
+        assert moomoo_result["status"] == "MOOMOO_NOT_READY"
+        assert moomoo_result["broker_submission"] is False
+
+        paper_execution.check_moomoo_status = lambda: READY_MOOMOO
+        set_execution_env(trading_mode="approval", enabled=True, adapter="disabled")
+        adapter_id = add_approval(connection)
+        adapter_result = execute_paper_order(connection, adapter_id)
+        assert adapter_result["status"] == "ADAPTER_NOT_CONFIGURED"
+        assert adapter_result["broker_submission"] is False
+
+        set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
+        submitted_id = add_approval(connection)
+        submitted_result = execute_paper_order(connection, submitted_id)
+        assert submitted_result["status"] == "BROKER_SUBMITTED"
+        assert submitted_result["broker_submission"] is True
+        assert submitted_result["broker_response"]["broker_order_id"] == f"FAKE-PAPER-{submitted_id}"
+
+        submitted_row = get_approval(connection, submitted_id)
+        assert submitted_row["broker_submission"] is True
+        assert submitted_row["execution_status"] == "BROKER_SUBMITTED"
+        payload = json.loads(submitted_row["payload"])
+        assert payload["broker_submission"]["adapter"] == "fake"
+
+        duplicate_result = execute_paper_order(connection, submitted_id)
+        assert duplicate_result["status"] == "ALREADY_SUBMITTED"
+        assert duplicate_result["broker_submission"] is True
+    finally:
+        paper_execution.check_moomoo_status = original_moomoo_status
+        for key, value in original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    print("PASS: paper execution gates prevent unsafe broker submission.")
+
+
+if __name__ == "__main__":
+    main()
