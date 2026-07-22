@@ -1,8 +1,8 @@
 """Local quant agent for rule-based signal evaluation."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timezone, timedelta
 
-from tiingo_prices import fetch_eod_prices
+from tiingo_prices import fetch_eod_prices, read_cache_metadata
 
 
 def _evaluate_s001_signal(bars: list[dict]) -> dict:
@@ -40,10 +40,17 @@ def _evaluate_s001_signal(bars: list[dict]) -> dict:
     }
 
 
-def evaluate_quant(symbol: str, *, allow_fallback: bool = True) -> dict:
+def evaluate_quant(symbol: str, *, allow_fallback: bool = True, allow_stale_cache: bool = False) -> dict:
     end_date = date.today()
     start_date = end_date - timedelta(days=320)
-    bars, source = fetch_eod_prices(symbol, start_date.isoformat(), end_date.isoformat(), allow_fallback=allow_fallback)
+    bars, source = fetch_eod_prices(
+        symbol,
+        start_date.isoformat(),
+        end_date.isoformat(),
+        allow_fallback=allow_fallback,
+        allow_stale_cache=allow_stale_cache,
+    )
+    freshness = data_freshness(symbol, source)
     strategy = _evaluate_s001_signal(bars)
     close = float(bars[-1]["close"]) if bars else None
     return {
@@ -55,5 +62,25 @@ def evaluate_quant(symbol: str, *, allow_fallback: bool = True) -> dict:
         "price": close,
         "bars": len(bars),
         "price_source": source,
+        **freshness,
         "strategy": strategy,
     }
+
+
+def data_freshness(symbol: str, source: str) -> dict:
+    if source == "tiingo":
+        return {"data_freshness": "live", "cache_cached_at": None, "cache_age_hours": None}
+    if not source.startswith("tiingo_cache"):
+        return {"data_freshness": "fixture" if source.startswith("fixture") else "unknown", "cache_cached_at": None, "cache_age_hours": None}
+    metadata = read_cache_metadata(symbol)
+    cached_at = metadata.get("cached_at")
+    age_hours = None
+    if cached_at:
+        try:
+            cached_dt = datetime.fromisoformat(cached_at)
+            if cached_dt.tzinfo is None:
+                cached_dt = cached_dt.replace(tzinfo=timezone.utc)
+            age_hours = round((datetime.now(timezone.utc) - cached_dt).total_seconds() / 3600, 2)
+        except ValueError:
+            age_hours = None
+    return {"data_freshness": "cached", "cache_cached_at": cached_at, "cache_age_hours": age_hours}

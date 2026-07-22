@@ -90,7 +90,6 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
     if (
         not moomoo.get("paper_account_ready")
         or moomoo.get("environment") != "SIMULATE"
-        or moomoo.get("account_type") != "CASH"
         or moomoo.get("account_status") != "ACTIVE"
     ):
         result = update_execution_status(

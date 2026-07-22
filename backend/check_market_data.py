@@ -11,6 +11,7 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--min-bars", type=int, default=200)
     parser.add_argument("--strict", action="store_true", help="fail instead of using fixture fallback")
+    parser.add_argument("--allow-cache", action="store_true", help="use cached Tiingo bars if the live request fails")
     args = parser.parse_args()
 
     try:
@@ -19,9 +20,20 @@ def main() -> int:
             days=args.days,
             min_bars=args.min_bars,
             allow_fallback=not args.strict,
+            allow_stale_cache=args.allow_cache,
         )
     except Exception as exc:
         print(f"Market data request failed: {type(exc).__name__}")
+        error_code = getattr(exc, "error_code", None)
+        status_code = getattr(exc, "status_code", None)
+        retry_after = getattr(exc, "retry_after", None)
+        if error_code:
+            print(f"Error code: {error_code}")
+        if status_code:
+            print(f"HTTP status: {status_code}")
+        if retry_after:
+            print(f"Retry after: {retry_after}")
+        print(f"Message: {exc}")
         return 3
 
     print(f"Symbol: {summary['symbol']}")

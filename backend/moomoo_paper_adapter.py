@@ -79,9 +79,9 @@ def submit_moomoo_paper_order(*, approval: dict) -> dict:
         return {"status": "SDK_UNAVAILABLE", "adapter": "moomoo", "broker_submission": False, "reason": type(exc).__name__}
 
     trd_market = market_to_trd_market(sdk, market)
-    context = sdk["OpenSecTradeContext"](filter_trdmarket=trd_market, host=settings.moomoo_host, port=settings.moomoo_port)
+    account_context = sdk["OpenSecTradeContext"](filter_trdmarket=trd_market, host=settings.moomoo_host, port=settings.moomoo_port)
     try:
-        ret, accounts = context.get_acc_list()
+        ret, accounts = account_context.get_acc_list()
         if ret != sdk["RET_OK"]:
             return {
                 "status": "MOOMOO_ACCOUNT_QUERY_FAILED",
@@ -89,16 +89,24 @@ def submit_moomoo_paper_order(*, approval: dict) -> dict:
                 "broker_submission": False,
                 "reason": str(accounts),
             }
-        account = find_active_simulate_cash_account(accounts)
+        account = find_active_simulate_account(accounts)
         if account is None:
             return {
                 "status": "MOOMOO_PAPER_ACCOUNT_MISSING",
                 "adapter": "moomoo",
                 "broker_submission": False,
-                "reason": "active_simulate_cash_account_not_found",
+                "reason": "active_simulate_account_not_found",
             }
 
         account_id = int(account["acc_id"])
+        account_type = str(account.get("acc_type", "UNKNOWN"))
+    except Exception as exc:
+        return {"status": "BROKER_ERROR", "adapter": "moomoo", "broker_submission": False, "reason": type(exc).__name__}
+    finally:
+        account_context.close()
+
+    context = sdk["OpenSecTradeContext"](filter_trdmarket=trd_market, host=settings.moomoo_host, port=settings.moomoo_port)
+    try:
         ret, order_data = context.place_order(
             price=float(price),
             qty=float(quantity),
@@ -119,7 +127,7 @@ def submit_moomoo_paper_order(*, approval: dict) -> dict:
                 "broker_submission": False,
                 "reason": str(order_data),
                 "environment": "SIMULATE",
-                "account_type": "CASH",
+                "account_type": account_type,
                 "account_suffix": str(account_id)[-4:],
             }
 
@@ -137,7 +145,7 @@ def submit_moomoo_paper_order(*, approval: dict) -> dict:
             "quantity": quantity,
             "price": price,
             "environment": "SIMULATE",
-            "account_type": "CASH",
+            "account_type": account_type,
             "account_suffix": str(account_id)[-4:],
             "order_status": extract_first_value(order_data, "order_status"),
         }
@@ -197,9 +205,9 @@ def rows_from_table(table) -> list[dict]:
     return []
 
 
-def find_active_simulate_cash_account(accounts) -> dict | None:
+def find_active_simulate_account(accounts) -> dict | None:
     for row in rows_from_table(accounts):
-        if row.get("trd_env") == "SIMULATE" and row.get("acc_type") == "CASH" and row.get("acc_status") == "ACTIVE":
+        if row.get("trd_env") == "SIMULATE" and row.get("acc_status") == "ACTIVE":
             return row
     return None
 

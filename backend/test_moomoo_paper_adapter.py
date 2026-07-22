@@ -28,7 +28,7 @@ class FakeTradeContext:
     def get_acc_list(self):
         return 0, [
             {"acc_id": 101, "trd_env": "REAL", "acc_type": "CASH", "acc_status": "ACTIVE"},
-            {"acc_id": 987654321, "trd_env": "SIMULATE", "acc_type": "CASH", "acc_status": "ACTIVE"},
+            {"acc_id": 987654321, "trd_env": "SIMULATE", "acc_type": "MARGIN", "acc_status": "ACTIVE"},
         ]
 
     def place_order(self, **kwargs):
@@ -75,10 +75,14 @@ def main() -> None:
         assert result["broker_code"] == "US.AAPL"
         assert result["account_suffix"] == "4321"
 
-        context = FakeTradeContext.instances[0]
-        assert context.kwargs["filter_trdmarket"] == "US"
-        assert context.closed is True
-        call = context.place_order_calls[0]
+        account_context = FakeTradeContext.instances[0]
+        assert account_context.kwargs["filter_trdmarket"] == "US"
+        assert account_context.closed is True
+
+        order_context = FakeTradeContext.instances[1]
+        assert order_context.kwargs["filter_trdmarket"] == "US"
+        assert order_context.closed is True
+        call = order_context.place_order_calls[0]
         assert call["code"] == "US.AAPL"
         assert call["trd_side"] == "BUY"
         assert call["order_type"] == "NORMAL"

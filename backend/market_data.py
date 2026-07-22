@@ -5,7 +5,14 @@ from datetime import date, timedelta
 from tiingo_prices import fetch_eod_prices
 
 
-def summarize_history(symbol: str, *, days: int = 365, min_bars: int = 200, allow_fallback: bool = True) -> dict:
+def summarize_history(
+    symbol: str,
+    *,
+    days: int = 365,
+    min_bars: int = 200,
+    allow_fallback: bool = True,
+    allow_stale_cache: bool = False,
+) -> dict:
     normalized_symbol = symbol.strip().upper()
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
@@ -14,6 +21,7 @@ def summarize_history(symbol: str, *, days: int = 365, min_bars: int = 200, allo
         start_date.isoformat(),
         end_date.isoformat(),
         allow_fallback=allow_fallback,
+        allow_stale_cache=allow_stale_cache,
     )
     latest = bars[-1] if bars else None
     latest_close = float(latest["close"]) if latest else None

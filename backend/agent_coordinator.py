@@ -16,12 +16,13 @@ def evaluate_candidate(
     loss_per_trade_pct: float,
     daily_loss_pct: float,
     orders_today: int,
+    shariah_override: dict | None = None,
     quant_override: dict | None = None,
 ) -> dict:
     normalized_symbol = symbol.strip().upper()
     normalized_side = side.strip().upper()
 
-    shariah = evaluate_shariah(normalized_symbol)
+    shariah = shariah_override if shariah_override is not None else evaluate_shariah(normalized_symbol)
     quant = quant_override if quant_override is not None else evaluate_quant(normalized_symbol)
     selected_price = price if price is not None else quant.get("price")
     risk = evaluate_risk(

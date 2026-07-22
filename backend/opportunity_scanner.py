@@ -34,7 +34,7 @@ def scan_opportunities(symbols: str | None = None, *, alert_threshold_pct: float
     items = []
     for symbol in parse_symbols(symbols):
         try:
-            quant_override = evaluate_quant(symbol, allow_fallback=False)
+            quant_override = evaluate_quant(symbol, allow_fallback=False, allow_stale_cache=True)
         except Exception as exc:
             items.append(data_error_item(symbol, exc))
             continue
@@ -70,6 +70,9 @@ def scan_opportunities(symbols: str | None = None, *, alert_threshold_pct: float
                 "quant_reason": quant.get("reason"),
                 "risk_status": risk.get("status"),
                 "price_source": quant.get("price_source"),
+                "data_freshness": quant.get("data_freshness"),
+                "cache_cached_at": quant.get("cache_cached_at"),
+                "cache_age_hours": quant.get("cache_age_hours"),
                 "bars": quant.get("bars"),
                 "sma50": strategy.get("sma50"),
                 "sma200": strategy.get("sma200"),
@@ -134,6 +137,9 @@ def data_error_item(symbol: str, exc: Exception) -> dict:
         "quant_reason": "market_data_unavailable",
         "risk_status": None,
         "price_source": "unavailable",
+        "data_freshness": "unavailable",
+        "cache_cached_at": None,
+        "cache_age_hours": None,
         "bars": 0,
         "sma50": None,
         "sma200": None,
@@ -147,6 +153,10 @@ def data_error_item(symbol: str, exc: Exception) -> dict:
         "distance_to_trigger": None,
         "watch_status": "DATA_ERROR",
         "error_type": type(exc).__name__,
+        "error_code": getattr(exc, "error_code", None),
+        "error_message": str(exc),
+        "http_status": getattr(exc, "status_code", None),
+        "retry_after": getattr(exc, "retry_after", None),
     }
 
 

@@ -6,7 +6,7 @@ from config import load_settings
 def check_moomoo_status() -> dict:
     settings = load_settings()
     try:
-        from moomoo import OpenSecTradeContext
+        from moomoo import OpenSecTradeContext, TrdMarket
     except ModuleNotFoundError:
         return {
             "status": "not_installed",
@@ -30,7 +30,7 @@ def check_moomoo_status() -> dict:
             "reason": type(exc).__name__,
         }
 
-    context = OpenSecTradeContext(host=settings.moomoo_host, port=settings.moomoo_port)
+    context = OpenSecTradeContext(filter_trdmarket=TrdMarket.US, host=settings.moomoo_host, port=settings.moomoo_port)
     try:
         ret, accounts = context.get_acc_list()
         if ret != 0:
@@ -47,7 +47,6 @@ def check_moomoo_status() -> dict:
 
         paper = accounts[
             (accounts["trd_env"] == "SIMULATE")
-            & (accounts["acc_type"] == "CASH")
             & (accounts["acc_status"] == "ACTIVE")
         ]
         if paper.empty:
@@ -59,7 +58,7 @@ def check_moomoo_status() -> dict:
                 "paper_account_ready": False,
                 "paper_execution_enabled": settings.paper_execution_enabled,
                 "broker_submission": False,
-                "reason": "active_simulate_cash_account_not_found",
+                "reason": "active_us_simulate_account_not_found",
             }
 
         account_id = str(paper.iloc[0]["acc_id"])

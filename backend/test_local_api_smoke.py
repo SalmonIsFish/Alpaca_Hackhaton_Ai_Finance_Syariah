@@ -26,6 +26,10 @@ universe_path.write_text(
     encoding="utf-8",
 )
 os.environ["SHARIAH_UNIVERSE_PATH"] = str(universe_path)
+os.environ["TRADING_MODE"] = "approval"
+os.environ["PAPER_EXECUTION_ENABLED"] = "false"
+os.environ["PAPER_EXECUTION_ADAPTER"] = "disabled"
+os.environ["MOOMOO_MODE"] = "paper"
 
 from agent_coordinator import evaluate_candidate
 from agents.shariah_agent import detect_market
@@ -34,6 +38,7 @@ from local_api import app
 
 
 def main() -> None:
+    local_api.DB_PATH = Path(fixture_dir.name) / "paper_trading.db"
     client = TestClient(app)
 
     home = client.get("/")
@@ -49,7 +54,9 @@ def main() -> None:
     assert "/paper/status" in home_payload["routes"]
     assert "/moomoo/status" in home_payload["routes"]
     assert "/market-data/{symbol}" in home_payload["routes"]
+    assert "/watchlist" in home_payload["routes"]
     assert "/opportunities" in home_payload["routes"]
+    assert "/opportunity-alerts" in home_payload["routes"]
     assert "/agent/evaluate" in home_payload["routes"]
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
@@ -98,17 +105,48 @@ def main() -> None:
     assert moomoo_payload["broker_submission"] is False
     assert "paper_account_ready" in moomoo_payload
 
-    market_data = client.get("/market-data/TEST")
+    original_summarize_history = local_api.summarize_history
+    local_api.summarize_history = lambda symbol, **kwargs: {
+        "symbol": symbol.strip().upper(),
+        "source": "test_fixture",
+        "bars": 2,
+        "min_bars": kwargs["min_bars"],
+        "enough_history": False,
+        "latest_date": "2026-07-21",
+        "latest_close": 102.0,
+        "start_date": "2025-07-22",
+        "end_date": "2026-07-22",
+    }
+    try:
+        market_data = client.get("/market-data/TEST")
+    finally:
+        local_api.summarize_history = original_summarize_history
     assert market_data.status_code == 200, market_data.text
     market_payload = market_data.json()
     assert market_payload["symbol"] == "TEST"
-    assert market_payload["source"] in {"fixture", "fixture_after_tiingo_error"}
+    assert market_payload["source"] == "test_fixture"
     assert market_payload["bars"] == 2
     assert market_payload["enough_history"] is False
 
+    watchlist_update = client.post(
+        "/watchlist",
+        json={"symbols": ["MSFT", "AAPL"], "alert_threshold_pct": 2.0},
+    )
+    assert watchlist_update.status_code == 200, watchlist_update.text
+    watchlist_update_payload = watchlist_update.json()
+    assert watchlist_update_payload["symbols"] == ["MSFT", "AAPL"]
+    assert watchlist_update_payload["alert_threshold_pct"] == 2.0
+
+    watchlist = client.get("/watchlist")
+    assert watchlist.status_code == 200, watchlist.text
+    watchlist_payload = watchlist.json()
+    assert watchlist_payload["symbols"] == ["MSFT", "AAPL"]
+    assert watchlist_payload["alert_threshold_pct"] == 2.0
+    assert "latest_results" in watchlist_payload
+
     original_scan_evaluate_candidate = local_api.scan_opportunities.__globals__["evaluate_candidate"]
     original_scan_evaluate_quant = local_api.scan_opportunities.__globals__["evaluate_quant"]
-    local_api.scan_opportunities.__globals__["evaluate_quant"] = lambda symbol, allow_fallback=False: {
+    local_api.scan_opportunities.__globals__["evaluate_quant"] = lambda symbol, allow_fallback=False, allow_stale_cache=False: {
         "agent": "quant",
         "status": "PASS" if symbol == "AAPL" else "NO_SIGNAL",
         "symbol": symbol,
@@ -157,11 +195,14 @@ def main() -> None:
     }
     try:
         opportunities = client.get("/opportunities?symbols=MSFT,AAPL&alert_threshold_pct=2.0")
+        forced_opportunities = client.get("/opportunities?force=true&symbols=MSFT,AAPL&alert_threshold_pct=2.0")
     finally:
         local_api.scan_opportunities.__globals__["evaluate_candidate"] = original_scan_evaluate_candidate
         local_api.scan_opportunities.__globals__["evaluate_quant"] = original_scan_evaluate_quant
     assert opportunities.status_code == 200, opportunities.text
     opportunities_payload = opportunities.json()
+    assert opportunities_payload["status"] == "SCANNED"
+    assert opportunities_payload["throttled"] is False
     assert opportunities_payload["count"] == 2
     assert opportunities_payload["ready_count"] == 1
     assert opportunities_payload["alert_count"] == 1
@@ -175,6 +216,24 @@ def main() -> None:
     assert opportunities_payload["items"][0]["trigger_price"] == 99.0
     assert opportunities_payload["items"][0]["distance_to_trigger"] == -1.0
     assert opportunities_payload["items"][1]["alert_status"] == "ALERT"
+    assert "alert_events" in opportunities_payload
+
+    throttled_opportunities = client.get("/opportunities")
+    assert throttled_opportunities.status_code == 200, throttled_opportunities.text
+    throttled_payload = throttled_opportunities.json()
+    assert throttled_payload["status"] == "THROTTLED"
+    assert throttled_payload["throttled"] is True
+    assert throttled_payload["wait_seconds"] > 0
+    assert throttled_payload["count"] == 2
+
+    assert forced_opportunities.status_code == 200, forced_opportunities.text
+    forced_payload = forced_opportunities.json()
+    assert forced_payload["status"] == "SCANNED"
+    assert forced_payload["throttled"] is False
+
+    opportunity_alerts = client.get("/opportunity-alerts")
+    assert opportunity_alerts.status_code == 200, opportunity_alerts.text
+    assert isinstance(opportunity_alerts.json(), list)
 
     agent_evaluation = client.post(
         "/agent/evaluate",
@@ -229,6 +288,36 @@ def main() -> None:
     assert ready_candidate["broker_submission"] is False
     assert ready_candidate["agent_summary"]["shariah"]["status"] == "PASS"
     assert ready_candidate["agent_summary"]["risk"]["status"] == "PASS"
+
+    original_paper_execution_enabled = os.environ.get("PAPER_EXECUTION_ENABLED")
+    os.environ["PAPER_EXECUTION_ENABLED"] = "true"
+    try:
+        fixture_preview = client.post(
+            "/paper/preview",
+            json={
+                "symbol": "AAPL",
+                "side": "BUY",
+                "quantity": 1,
+                "price": 1.0,
+                "position_pct": 1.0,
+                "total_exposure_pct": 5.0,
+                "loss_per_trade_pct": 0.2,
+                "daily_loss_pct": 0.3,
+                "orders_today": 0,
+                "test_fixture": True,
+            },
+        )
+    finally:
+        if original_paper_execution_enabled is None:
+            os.environ.pop("PAPER_EXECUTION_ENABLED", None)
+        else:
+            os.environ["PAPER_EXECUTION_ENABLED"] = original_paper_execution_enabled
+    assert fixture_preview.status_code == 200, fixture_preview.text
+    fixture_preview_payload = fixture_preview.json()
+    assert fixture_preview_payload["preview"]["status"] == "READY_FOR_APPROVAL"
+    assert fixture_preview_payload["preview"]["broker_submission"] is False
+    assert fixture_preview_payload["preview"]["agent_summary"]["shariah"]["provider"] == "PAPER_TEST_FIXTURE"
+    assert fixture_preview_payload["preview"]["agent_summary"]["quant"]["price_source"] == "paper_test_fixture"
 
     original_evaluate_candidate = local_api.evaluate_candidate
     local_api.evaluate_candidate = lambda **kwargs: {

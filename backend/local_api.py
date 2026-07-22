@@ -1,7 +1,7 @@
 """Minimal local API for the paper-trading dashboard."""
 
-import sqlite3
 import json
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +18,14 @@ from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order
 from trading_modes import trading_mode_status
+from watchlist_store import (
+    ensure_watchlist_tables,
+    get_watchlist_settings,
+    latest_scan_snapshot,
+    list_alert_events,
+    save_opportunity_scan,
+    save_watchlist_settings,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -36,6 +44,7 @@ def db() -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL)")
     ensure_approval_queue(connection)
+    ensure_watchlist_tables(connection)
     connection.commit()
     return connection
 
@@ -54,6 +63,7 @@ class PaperPreviewRequest(BaseModel):
     loss_per_trade_pct: float = Field(ge=0)
     daily_loss_pct: float = Field(ge=0)
     orders_today: int = Field(ge=0)
+    test_fixture: bool = False
 
 
 class PaperApprovalRequest(BaseModel):
@@ -65,7 +75,14 @@ class PaperExecutionRequest(BaseModel):
     confirmation_phrase: str | None = None
 
 
+class WatchlistRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1, max_length=30)
+    alert_threshold_pct: float = Field(ge=0.1, le=20.0)
+
+
 PAPER_EXECUTION_CONFIRMATION = "EXECUTE PAPER"
+DEFAULT_SCAN_THROTTLE_MINUTES = 10
+PAPER_TEST_SYMBOLS = {"AAPL"}
 
 
 def add_audit_event(event_type: str, payload: dict) -> dict:
@@ -82,6 +99,68 @@ def add_audit_event(event_type: str, payload: dict) -> dict:
         connection.close()
 
 
+def paper_test_overrides(request: PaperPreviewRequest) -> dict:
+    if not request.test_fixture:
+        return {}
+
+    settings = load_settings()
+    symbol = request.symbol.strip().upper()
+    if (
+        symbol not in PAPER_TEST_SYMBOLS
+        or settings.moomoo_mode != "paper"
+        or settings.trading_mode != "approval"
+        or not settings.paper_execution_enabled
+    ):
+        return {}
+
+    price = request.price or 1.0
+    return {
+        "shariah_override": {
+            "agent": "shariah",
+            "market": "US",
+            "provider": "PAPER_TEST_FIXTURE",
+            "status": "PASS",
+            "symbol": symbol,
+            "reason": "paper_execution_test_fixture",
+            "details": {"status": "COMPLIANT", "symbol": symbol, "fixture": True},
+        },
+        "quant_override": {
+            "agent": "quant",
+            "status": "PASS",
+            "symbol": symbol,
+            "signal": "BUY",
+            "reason": "paper_execution_test_fixture",
+            "price": price,
+            "bars": 220,
+            "price_source": "paper_test_fixture",
+            "strategy": {
+                "signal": "BUY",
+                "sma50": price,
+                "sma200": round(price * 0.95, 4),
+                "trend_ok": True,
+                "breakout_ok": True,
+                "breakout_level": round(price * 0.99, 4),
+                "breakout_gap_pct": 1.0101,
+            },
+        },
+    }
+
+
+def evaluate_preview_request(request: PaperPreviewRequest) -> dict:
+    return evaluate_candidate(
+        symbol=request.symbol,
+        side=request.side,
+        quantity=request.quantity,
+        price=request.price,
+        position_pct=request.position_pct,
+        total_exposure_pct=request.total_exposure_pct,
+        loss_per_trade_pct=request.loss_per_trade_pct,
+        daily_loss_pct=request.daily_loss_pct,
+        orders_today=request.orders_today,
+        **paper_test_overrides(request),
+    )
+
+
 @app.get("/")
 def home() -> dict:
     settings = load_settings()
@@ -89,7 +168,22 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
-        "routes": ["/health", "/system/mode", "/paper/status", "/moomoo/status", "/market-data/{symbol}", "/opportunities", "/agent/evaluate", "/paper/preview", "/paper/approval", "/paper/execute/{queue_id}", "/approvals", "/audit"],
+        "routes": [
+            "/health",
+            "/system/mode",
+            "/paper/status",
+            "/moomoo/status",
+            "/market-data/{symbol}",
+            "/watchlist",
+            "/opportunities",
+            "/opportunity-alerts",
+            "/agent/evaluate",
+            "/paper/preview",
+            "/paper/approval",
+            "/paper/execute/{queue_id}",
+            "/approvals",
+            "/audit",
+        ],
         "live_trading": False,
         "trading_mode": settings.trading_mode,
         "paper_execution_enabled": settings.paper_execution_enabled,
@@ -135,20 +229,107 @@ def market_data_status(symbol: str) -> dict:
     return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
 
 
+@app.get("/watchlist")
+def watchlist() -> dict:
+    connection = db()
+    try:
+        return get_watchlist_settings(connection)
+    finally:
+        connection.close()
+
+
+@app.post("/watchlist")
+def update_watchlist(request: WatchlistRequest) -> dict:
+    connection = db()
+    try:
+        previous = get_watchlist_settings(connection)
+        settings = save_watchlist_settings(
+            connection,
+            symbols=request.symbols,
+            alert_threshold_pct=request.alert_threshold_pct,
+        )
+    finally:
+        connection.close()
+    changed = (
+        previous["symbols"] != settings["symbols"]
+        or previous["alert_threshold_pct"] != settings["alert_threshold_pct"]
+    )
+    if changed:
+        add_audit_event(
+            "watchlist_updated",
+            {
+                "symbols": settings["symbols"],
+                "alert_threshold_pct": settings["alert_threshold_pct"],
+            },
+        )
+    return settings
+
+
 @app.get("/opportunities")
-def opportunities(symbols: str | None = None, alert_threshold_pct: float = 3.0) -> dict:
-    scan = scan_opportunities(symbols, alert_threshold_pct=alert_threshold_pct)
+def opportunities(
+    symbols: str | None = None,
+    alert_threshold_pct: float | None = None,
+    force: bool = False,
+    min_scan_interval_minutes: int = DEFAULT_SCAN_THROTTLE_MINUTES,
+) -> dict:
+    connection = db()
+    try:
+        settings = get_watchlist_settings(connection)
+        snapshot = latest_scan_snapshot(connection, symbols=settings["symbols"] if symbols is None else symbols.split(","))
+    finally:
+        connection.close()
+    selected_symbols = symbols if symbols is not None else ",".join(settings["symbols"])
+    selected_threshold = alert_threshold_pct if alert_threshold_pct is not None else settings["alert_threshold_pct"]
+    throttle_minutes = max(0, min(120, min_scan_interval_minutes))
+    if not force and throttle_minutes and snapshot is not None:
+        last_scan_at = datetime.fromisoformat(snapshot["created_at"])
+        if last_scan_at.tzinfo is None:
+            last_scan_at = last_scan_at.replace(tzinfo=timezone.utc)
+        seconds_since_scan = (datetime.now(timezone.utc) - last_scan_at).total_seconds()
+        wait_seconds = max(0, int((throttle_minutes * 60) - seconds_since_scan))
+        if wait_seconds > 0:
+            return {
+                "status": "THROTTLED",
+                "throttled": True,
+                "scan_id": None,
+                "created_at": snapshot["created_at"],
+                "last_scan_at": snapshot["created_at"],
+                "wait_seconds": wait_seconds,
+                "min_scan_interval_minutes": throttle_minutes,
+                "alert_events": [],
+                **snapshot,
+            }
+    scan = scan_opportunities(selected_symbols, alert_threshold_pct=selected_threshold)
     audit = add_audit_event(
         "opportunity_scan",
         {
             "count": scan["count"],
             "ready_count": scan["ready_count"],
             "alert_count": scan["alert_count"],
-            "alert_threshold_pct": alert_threshold_pct,
+            "alert_threshold_pct": selected_threshold,
             "symbols": [item["symbol"] for item in scan["items"]],
         },
     )
-    return {"scan_id": audit["id"], "created_at": audit["created_at"], **scan}
+    connection = db()
+    try:
+        alert_events = save_opportunity_scan(
+            connection,
+            scan_id=audit["id"],
+            scanned_at=audit["created_at"],
+            scan=scan,
+        )
+    finally:
+        connection.close()
+    return {"status": "SCANNED", "throttled": False, "scan_id": audit["id"], "created_at": audit["created_at"], "alert_events": alert_events, **scan}
+
+
+@app.get("/opportunity-alerts")
+def opportunity_alerts(limit: int = 50) -> list[dict]:
+    connection = db()
+    try:
+        return list_alert_events(connection, limit=max(1, min(200, limit)))
+    finally:
+        connection.close()
 
 
 @app.get("/moomoo/status")
@@ -158,34 +339,14 @@ def moomoo_status() -> dict:
 
 @app.post("/agent/evaluate")
 def evaluate_agents(request: PaperPreviewRequest) -> dict:
-    evaluation = evaluate_candidate(
-        symbol=request.symbol,
-        side=request.side,
-        quantity=request.quantity,
-        price=request.price,
-        position_pct=request.position_pct,
-        total_exposure_pct=request.total_exposure_pct,
-        loss_per_trade_pct=request.loss_per_trade_pct,
-        daily_loss_pct=request.daily_loss_pct,
-        orders_today=request.orders_today,
-    )
+    evaluation = evaluate_preview_request(request)
     audit = add_audit_event("agent_evaluation", evaluation)
     return {"evaluation_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "evaluation": evaluation}
 
 
 @app.post("/paper/preview")
 def preview_paper_order(request: PaperPreviewRequest) -> dict:
-    evaluation = evaluate_candidate(
-        symbol=request.symbol,
-        side=request.side,
-        quantity=request.quantity,
-        price=request.price,
-        position_pct=request.position_pct,
-        total_exposure_pct=request.total_exposure_pct,
-        loss_per_trade_pct=request.loss_per_trade_pct,
-        daily_loss_pct=request.daily_loss_pct,
-        orders_today=request.orders_today,
-    )
+    evaluation = evaluate_preview_request(request)
     side = request.side.strip().upper()
     if evaluation["decision"] != "READY_FOR_APPROVAL" or evaluation["price"] is None:
         preview = {

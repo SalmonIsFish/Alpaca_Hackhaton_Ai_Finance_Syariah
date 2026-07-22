@@ -317,6 +317,19 @@
       grid-column: span 2;
     }
 
+    .fixture-toggle {
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .fixture-toggle input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+
     .form-actions {
       display: flex;
       flex-wrap: wrap;
@@ -410,7 +423,7 @@
     .opportunity-controls {
       display: grid;
       gap: 10px;
-      grid-template-columns: 1fr 110px 120px auto;
+      grid-template-columns: 1fr 110px 120px auto auto auto;
       align-items: end;
       margin-top: 12px;
     }
@@ -598,6 +611,10 @@
               <label class="field-wide">Orders Today
                 <input id="ordersToday" type="number" min="0" step="1" value="0">
               </label>
+              <label class="field-wide fixture-toggle">
+                <input id="testFixture" type="checkbox">
+                Paper Test Fixture
+              </label>
             </div>
             <div class="form-actions">
               <button id="previewButton" type="submit">Run Agents</button>
@@ -619,9 +636,11 @@
               <input id="alertThresholdPct" type="number" min="0.1" max="20" step="0.1" value="3.0">
             </label>
             <label>Every Min
-              <input id="autoScanMinutes" type="number" min="1" max="60" step="1" value="5">
+              <input id="autoScanMinutes" type="number" min="10" max="120" step="5" value="30">
             </label>
+            <button id="saveWatchlistButton" class="secondary" type="button">Save</button>
             <button id="scanButton" class="secondary" type="button">Scan</button>
+            <button id="forceScanButton" class="secondary" type="button">Force</button>
           </div>
           <div class="monitor-strip">
             <label class="monitor-toggle">
@@ -705,6 +724,22 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>Current Alerts</h2>
+            <span id="currentAlertCount" class="badge warn">0 Active</span>
+          </div>
+          <div id="currentAlertList" class="audit-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Event History</h2>
+            <span id="alertHistoryCount" class="badge warn">0 Events</span>
+          </div>
+          <div id="alertHistoryList" class="audit-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>Approval Queue</h2>
             <span id="approvalQueueCount" class="badge warn">0 Orders</span>
           </div>
@@ -729,7 +764,9 @@
     const previewForm = document.querySelector("#previewForm");
     const previewButton = document.querySelector("#previewButton");
     const resetButton = document.querySelector("#resetButton");
+    const saveWatchlistButton = document.querySelector("#saveWatchlistButton");
     const scanButton = document.querySelector("#scanButton");
+    const forceScanButton = document.querySelector("#forceScanButton");
     const approveButton = document.querySelector("#approveButton");
     const rejectButton = document.querySelector("#rejectButton");
     const apiConnection = document.querySelector("#apiConnection");
@@ -753,6 +790,10 @@
     const rawOutput = document.querySelector("#rawOutput");
     const committeeList = document.querySelector("#committeeList");
     const committeeBadge = document.querySelector("#committeeBadge");
+    const currentAlertList = document.querySelector("#currentAlertList");
+    const currentAlertCount = document.querySelector("#currentAlertCount");
+    const alertHistoryList = document.querySelector("#alertHistoryList");
+    const alertHistoryCount = document.querySelector("#alertHistoryCount");
     const approvalQueueList = document.querySelector("#approvalQueueList");
     const approvalQueueCount = document.querySelector("#approvalQueueCount");
     const auditList = document.querySelector("#auditList");
@@ -803,9 +844,78 @@
     }
 
     function autoScanIntervalMs() {
-      const minutes = Math.max(1, Math.min(60, Number(autoScanMinutes.value) || 5));
+      const minutes = Math.max(10, Math.min(120, Number(autoScanMinutes.value) || 30));
       autoScanMinutes.value = String(minutes);
       return minutes * 60 * 1000;
+    }
+
+    function parseWatchlistSymbols() {
+      const symbols = [];
+      opportunitySymbols.value.replace(/\n/g, ",").split(",").forEach((rawSymbol) => {
+        const symbol = rawSymbol.trim().toUpperCase();
+        if (symbol && !symbols.includes(symbol)) {
+          symbols.push(symbol);
+        }
+      });
+      return symbols.slice(0, 30);
+    }
+
+    function watchlistPayload() {
+      return {
+        symbols: parseWatchlistSymbols(),
+        alert_threshold_pct: Number(alertThresholdPct.value) || 3,
+      };
+    }
+
+    function applyWatchlistSettings(payload) {
+      if (Array.isArray(payload.symbols) && payload.symbols.length) {
+        opportunitySymbols.value = payload.symbols.join(", ");
+      }
+      if (payload.alert_threshold_pct != null) {
+        alertThresholdPct.value = String(payload.alert_threshold_pct);
+      }
+      const latest = payload.latest_results || [];
+      const items = latest.map((row) => row.payload).filter(Boolean);
+      renderOpportunities({
+        count: items.length,
+        ready_count: items.filter((item) => item.ready_for_approval).length,
+        alert_count: items.filter((item) => item.alert_status === "ALERT").length,
+        data_error_count: items.filter((item) => item.watch_status === "DATA_ERROR").length,
+        items,
+      });
+      renderCurrentAlerts(items);
+      if (latest.length) {
+        lastScanStatus.textContent = `Last scanned: ${formatLocalTime(latest[0].scanned_at)} | saved results`;
+      } else if (payload.updated_at) {
+        lastScanStatus.textContent = `Watchlist saved: ${formatLocalTime(payload.updated_at)} | no saved scan yet`;
+      }
+    }
+
+    async function saveWatchlistSettings(options = {}) {
+      saveWatchlistButton.disabled = true;
+      const originalText = saveWatchlistButton.textContent;
+      if (!options.quiet) {
+        saveWatchlistButton.textContent = "Saving";
+      }
+      try {
+        const payload = await postJson("/watchlist", watchlistPayload());
+        applyWatchlistSettings(payload);
+        if (!options.quiet) {
+          saveWatchlistButton.textContent = "Saved";
+          lastScanStatus.textContent = `Watchlist saved: ${formatLocalTime(payload.updated_at)}`;
+          setBadge(responseBadge, "Watchlist Saved", "ok");
+          rawOutput.textContent = JSON.stringify(payload, null, 2);
+          renderAudit(await getJson("/audit"));
+        }
+        return payload;
+      } finally {
+        saveWatchlistButton.disabled = false;
+        if (!options.quiet) {
+          window.setTimeout(() => {
+            saveWatchlistButton.textContent = originalText;
+          }, 1200);
+        }
+      }
     }
 
     function stopAutoScan() {
@@ -843,6 +953,7 @@
         loss_per_trade_pct: toNumber("lossPerTradePct"),
         daily_loss_pct: toNumber("dailyLossPct"),
         orders_today: toNumber("ordersToday"),
+        test_fixture: document.querySelector("#testFixture").checked,
       };
     }
 
@@ -916,13 +1027,15 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, systemMode, paper, moomoo, approvals, audit] = await Promise.all([
+        const [health, systemMode, paper, moomoo, approvals, audit, watchlist, alerts] = await Promise.all([
           getJson("/health"),
           getJson("/system/mode"),
           getJson("/paper/status"),
           getJson("/moomoo/status"),
           getJson("/approvals"),
           getJson("/audit"),
+          getJson("/watchlist"),
+          getJson("/opportunity-alerts"),
         ]);
 
         const connected = health.status === "ok";
@@ -939,10 +1052,12 @@
         setStat(paperExecution, executionEnabled ? "Enabled" : "Locked", executionEnabled ? "warn" : "ok");
         setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
         renderCommittee(systemMode);
+        applyWatchlistSettings(watchlist);
+        renderAlertHistory(alerts);
         renderApprovalQueue(approvals);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
-        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo }, null, 2);
+        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo, watchlist }, null, 2);
       } catch (error) {
         setStat(apiConnection, "Disconnected", "bad");
         setStat(paperMode, "Unknown", "warn");
@@ -988,6 +1103,75 @@
       });
     }
 
+    function stateClass(status) {
+      if (status === "READY") {
+        return "ok";
+      }
+      if (status === "ALERT" || status === "NEAR_BREAKOUT") {
+        return "warn";
+      }
+      if (status === "DATA_ERROR" || status === "BLOCKED") {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function freshnessLabel(item) {
+      if (item.data_freshness === "live" || item.price_source === "tiingo") {
+        return "Live";
+      }
+      if (item.data_freshness === "cached" || String(item.price_source || "").startsWith("tiingo_cache")) {
+        const age = item.cache_age_hours == null ? "age -" : `${Number(item.cache_age_hours).toFixed(1)}h old`;
+        return `Cached ${age}`;
+      }
+      if (item.watch_status === "DATA_ERROR") {
+        return item.error_code || item.error_type || "Data error";
+      }
+      return item.price_source || "-";
+    }
+
+    function renderCurrentAlerts(items) {
+      const active = (items || []).filter((item) => item.ready_for_approval || item.alert_status === "ALERT");
+      currentAlertList.replaceChildren();
+      setBadge(currentAlertCount, `${active.length} ${active.length === 1 ? "Active" : "Active"}`, active.length ? "ok" : "warn");
+      if (!active.length) {
+        const empty = document.createElement("div");
+        empty.className = "audit-item";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><code>No active ALERT or READY symbols.</code>";
+        currentAlertList.append(empty);
+        return;
+      }
+      active.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "audit-item";
+        const status = item.ready_for_approval ? "READY" : "ALERT";
+        const trigger = item.trigger_price == null ? "-" : `$${Number(item.trigger_price).toFixed(2)}`;
+        const distance = item.distance_to_trigger == null ? "-" : `$${Number(item.distance_to_trigger).toFixed(2)}`;
+        row.innerHTML = `<span class="badge ${stateClass(status)}">${item.symbol}</span><code>${status} | Trigger ${trigger} | Distance ${distance} | Quant ${item.quant_signal || "-"}</code>`;
+        currentAlertList.append(row);
+      });
+    }
+
+    function renderAlertHistory(events) {
+      alertHistoryList.replaceChildren();
+      setBadge(alertHistoryCount, `${events.length} ${events.length === 1 ? "Event" : "Events"}`, events.length ? "ok" : "warn");
+      if (!events.length) {
+        const empty = document.createElement("div");
+        empty.className = "audit-item";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><code>No watchlist state changes yet.</code>";
+        alertHistoryList.append(empty);
+        return;
+      }
+      events.slice(0, 20).forEach((event) => {
+        const item = document.createElement("div");
+        item.className = "audit-item";
+        const previous = event.previous_status || "NEW";
+        const detail = event.payload?.error_type ? ` | ${event.payload.error_type}` : event.payload?.blockers?.length ? ` | ${event.payload.blockers.join(", ")}` : "";
+        item.innerHTML = `<span class="badge ${stateClass(event.new_status)}">${event.symbol}</span><code>${previous} -> ${event.new_status}${detail} | ${formatLocalTime(event.created_at)}</code>`;
+        alertHistoryList.append(item);
+      });
+    }
+
     function renderOpportunities(payload) {
       const items = payload.items || [];
       opportunityList.replaceChildren();
@@ -1019,11 +1203,12 @@
         const trend = item.trend_ok === true ? "Trend OK" : item.trend_ok === false ? "Trend Fail" : "Trend -";
         const breakout = item.breakout_ok === true ? "Breakout OK" : item.breakout_ok === false ? "Breakout Pending" : "Breakout -";
         const ticketButton = dataError ? "" : `<button class="secondary queue-action" type="button" data-opportunity-symbol="${item.symbol}" data-opportunity-price="${item.price ?? ""}">Use In Ticket</button>`;
+        const freshness = freshnessLabel(item);
         row.innerHTML = `
           <span class="badge ${state}">${label}</span>
           <div class="queue-meta">
             <strong>${item.symbol}</strong>
-            <span>${price} | Source ${item.price_source || "-"} | Bars ${item.bars ?? "-"} | Shariah ${item.shariah_status || "-"} | Quant ${item.quant_signal || "-"} | Risk ${item.risk_status || "-"}</span>
+            <span>${price} | Data ${freshness} | Source ${item.price_source || "-"} | Bars ${item.bars ?? "-"} | Shariah ${item.shariah_status || "-"} | Quant ${item.quant_signal || "-"} | Risk ${item.risk_status || "-"}</span>
             <span>${trend} | ${breakout} | Trigger ${trigger} | Distance ${distance} | Gap ${gap} | ${blockers}</span>
             ${ticketButton}
           </div>
@@ -1069,14 +1254,25 @@
       }
       scanInFlight = true;
       scanButton.disabled = true;
+      forceScanButton.disabled = true;
       const source = options.source || "manual";
-      setBadge(opportunityBadge, source === "auto" ? "Auto Scanning" : "Scanning", "warn");
-      rawOutput.textContent = source === "auto" ? "Auto scanning watchlist..." : "Scanning watchlist...";
+      const forced = options.force === true;
+      setBadge(opportunityBadge, forced ? "Force Scanning" : source === "auto" ? "Auto Scanning" : "Scanning", "warn");
+      rawOutput.textContent = forced ? "Force scanning watchlist..." : source === "auto" ? "Auto scanning watchlist..." : "Scanning watchlist...";
       try {
-        const threshold = Number(alertThresholdPct.value) || 3;
-        const payload = await getJson(`/opportunities?symbols=${encodeURIComponent(opportunitySymbols.value)}&alert_threshold_pct=${encodeURIComponent(threshold)}`);
+        await saveWatchlistSettings({ quiet: true });
+        const payload = await getJson(`/opportunities${forced ? "?force=true" : ""}`);
         renderOpportunities(payload);
+        renderCurrentAlerts(payload.items || []);
+        renderAlertHistory(await getJson("/opportunity-alerts"));
         renderAudit(await getJson("/audit"));
+        if (payload.throttled) {
+          const waitMinutes = Math.ceil((payload.wait_seconds || 0) / 60);
+          setBadge(responseBadge, "Throttled", "warn");
+          lastScanStatus.textContent = `Last scanned: ${formatLocalTime(payload.last_scan_at)} | wait ${waitMinutes} min or Force`;
+          rawOutput.textContent = JSON.stringify(payload, null, 2);
+          return;
+        }
         setBadge(responseBadge, "Opportunities", payload.ready_count ? "ok" : "warn");
         const alertText = payload.alert_count ? ` | ${payload.alert_count} alerts` : "";
         lastScanStatus.textContent = `Last scanned: ${formatLocalTime(payload.created_at)}${alertText}`;
@@ -1088,6 +1284,7 @@
         rawOutput.textContent = String(error);
       } finally {
         scanButton.disabled = false;
+        forceScanButton.disabled = false;
         scanInFlight = false;
       }
     }
@@ -1194,7 +1391,18 @@
     refreshButton.addEventListener("click", refreshStatus);
     previewForm.addEventListener("submit", createPreview);
     resetButton.addEventListener("click", resetTicket);
+    saveWatchlistButton.addEventListener("click", async () => {
+      setBadge(responseBadge, "Saving", "warn");
+      rawOutput.textContent = "Saving watchlist settings...";
+      try {
+        await saveWatchlistSettings();
+      } catch (error) {
+        setBadge(responseBadge, "Error", "bad");
+        rawOutput.textContent = String(error);
+      }
+    });
     scanButton.addEventListener("click", () => scanOpportunities({ source: "manual" }));
+    forceScanButton.addEventListener("click", () => scanOpportunities({ source: "manual", force: true }));
     autoScanToggle.addEventListener("change", () => {
       if (autoScanToggle.checked) {
         startAutoScan();
