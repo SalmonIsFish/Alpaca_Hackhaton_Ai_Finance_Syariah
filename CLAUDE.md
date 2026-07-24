@@ -31,6 +31,7 @@ Focused tests:
 ```powershell
 .\.venv\Scripts\python.exe backend/test_local_api_smoke.py
 .\.venv\Scripts\python.exe backend/test_portfolio_risk_limits.py
+.\.venv\Scripts\python.exe backend/test_investment_committee.py
 .\.venv\Scripts\python.exe backend/test_stock_profile.py
 python backend/test_portfolio_store.py
 python backend/test_paper_execution_gates.py
@@ -58,6 +59,7 @@ python backend/test_moomoo_paper_adapter.py
 - Execution audit cross-checks approval queue row fields against the stored preview, quote snapshot, and approval candidate before broker submission.
 - Portfolio fill sync rejects filled SELL reconciliations that exceed the local position, so bad or stale broker reconciliation cannot silently distort local holdings.
 - `/stock/{symbol}/profile` provides a read-only backend contract for Shariah status, market data, latest opportunity scan result, local portfolio exposure, and active risk limits.
+- `/investment-committee` provides a read-only aggregate of latest watchlist candidates, committee statuses, pending approvals, submitted orders, portfolio exposure, and risk limits.
 
 ## Good Next Tasks
 

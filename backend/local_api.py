@@ -256,6 +256,118 @@ def stock_profile_snapshot(connection: sqlite3.Connection, symbol: str) -> dict:
     return profile
 
 
+def compact_approval(approval: dict) -> dict:
+    return {
+        "id": approval.get("id"),
+        "created_at": approval.get("created_at"),
+        "symbol": approval.get("symbol"),
+        "side": approval.get("side"),
+        "quantity": approval.get("quantity"),
+        "price": approval.get("price"),
+        "notional": approval.get("notional"),
+        "approval_status": approval.get("approval_status"),
+        "execution_status": approval.get("execution_status"),
+        "execution_message": approval.get("execution_message"),
+        "broker_submission": approval.get("broker_submission"),
+        "shariah_status": approval.get("shariah_status"),
+        "quant_signal": approval.get("quant_signal"),
+        "risk_status": approval.get("risk_status"),
+    }
+
+
+def committee_status(item: dict) -> str:
+    if item.get("ready_for_approval") is True:
+        return "READY_FOR_REVIEW"
+    if item.get("watch_status") == "DATA_ERROR":
+        return "DATA_ERROR"
+    if item.get("alert_status") == "ALERT":
+        return "WATCH_ALERT"
+    if item.get("blockers"):
+        return "BLOCKED"
+    return "WATCH"
+
+
+def investment_committee_snapshot(connection: sqlite3.Connection, *, limit: int = 50) -> dict:
+    settings = load_settings()
+    watchlist = get_watchlist_settings(connection)
+    latest_results = list_latest_scan_results(connection, symbols=watchlist["symbols"], limit=max(1, min(200, limit)))
+    approvals = list_approvals(connection, limit=max(1, min(200, limit)))
+    portfolio = portfolio_snapshot_with_exposure(connection)
+
+    approvals_by_symbol: dict[str, list[dict]] = {}
+    for approval in approvals:
+        symbol = str(approval.get("symbol") or "").upper()
+        approvals_by_symbol.setdefault(symbol, []).append(compact_approval(approval))
+
+    candidates = []
+    for row in latest_results:
+        item = row.get("payload") or {}
+        symbol = row.get("symbol") or item.get("symbol")
+        candidates.append(
+            {
+                "symbol": symbol,
+                "committee_status": committee_status(item),
+                "decision": item.get("decision"),
+                "ready_for_approval": bool(item.get("ready_for_approval")),
+                "blockers": item.get("blockers", []),
+                "shariah_status": item.get("shariah_status"),
+                "quant_signal": item.get("quant_signal"),
+                "risk_status": item.get("risk_status"),
+                "watch_status": item.get("watch_status"),
+                "alert_status": item.get("alert_status"),
+                "price": item.get("price"),
+                "trigger_price": item.get("trigger_price"),
+                "breakout_gap_pct": item.get("breakout_gap_pct"),
+                "latest_scan": {
+                    "scan_id": row.get("scan_id"),
+                    "scanned_at": row.get("scanned_at"),
+                    "event_status": row.get("event_status"),
+                },
+                "recent_approvals": approvals_by_symbol.get(symbol, [])[:5],
+            }
+        )
+
+    pending_approvals = [
+        compact_approval(approval)
+        for approval in approvals
+        if approval.get("approval_status") == "APPROVED_PAPER_READY" and not approval.get("broker_submission")
+    ]
+    submitted_orders = [compact_approval(approval) for approval in approvals if approval.get("broker_submission")]
+    return {
+        "status": "OK",
+        "trading_mode": settings.trading_mode,
+        "paper_execution_enabled": settings.paper_execution_enabled,
+        "paper_execution_adapter": settings.paper_execution_adapter,
+        "broker_submission": broker_submission_configured(settings),
+        "watchlist": {
+            "symbols": watchlist["symbols"],
+            "alert_threshold_pct": watchlist["alert_threshold_pct"],
+            "updated_at": watchlist["updated_at"],
+        },
+        "counts": {
+            "candidates": len(candidates),
+            "ready_for_review": sum(1 for candidate in candidates if candidate["committee_status"] == "READY_FOR_REVIEW"),
+            "watch_alerts": sum(1 for candidate in candidates if candidate["committee_status"] == "WATCH_ALERT"),
+            "blocked": sum(1 for candidate in candidates if candidate["committee_status"] == "BLOCKED"),
+            "data_errors": sum(1 for candidate in candidates if candidate["committee_status"] == "DATA_ERROR"),
+            "pending_approvals": len(pending_approvals),
+            "submitted_orders": len(submitted_orders),
+            "open_positions": portfolio.get("position_count", 0),
+        },
+        "risk_limits": risk_limits_from_settings(settings),
+        "portfolio": {
+            "valuation_status": portfolio.get("valuation_status"),
+            "total_exposure": portfolio.get("total_exposure"),
+            "total_exposure_pct": portfolio.get("total_exposure_pct"),
+            "paper_account_equity": portfolio.get("paper_account_equity"),
+            "positions": portfolio.get("positions", []),
+        },
+        "candidates": candidates,
+        "pending_approvals": pending_approvals,
+        "submitted_orders": submitted_orders,
+    }
+
+
 def risk_limits_from_settings(settings) -> dict:
     return {
         "max_position_pct": settings.max_position_pct,
@@ -486,6 +598,7 @@ def home() -> dict:
             "/moomoo/status",
             "/market-data/{symbol}",
             "/stock/{symbol}/profile",
+            "/investment-committee",
             "/watchlist",
             "/opportunities",
             "/opportunity-alerts",
@@ -548,6 +661,15 @@ def stock_profile(symbol: str) -> dict:
     connection = db()
     try:
         return stock_profile_snapshot(connection, symbol)
+    finally:
+        connection.close()
+
+
+@app.get("/investment-committee")
+def investment_committee(limit: int = 50) -> dict:
+    connection = db()
+    try:
+        return investment_committee_snapshot(connection, limit=limit)
     finally:
         connection.close()
 
