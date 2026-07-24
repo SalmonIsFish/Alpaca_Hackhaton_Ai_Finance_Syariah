@@ -5,6 +5,7 @@ configured adapter. Broker submission remains opt-in through configuration.
 """
 
 import sqlite3
+import json
 
 from approval_queue import get_approval, record_broker_reconciliation, record_broker_submission, update_execution_status
 from config import load_settings
@@ -89,6 +90,22 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         )
         return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": False}
 
+    audit_gate = validate_approval_payload_for_execution(approval)
+    if audit_gate["status"] != "PASS":
+        result = update_execution_status(
+            connection,
+            queue_id,
+            status="APPROVAL_AUDIT_FAILED",
+            message="; ".join(audit_gate["errors"]),
+        )
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "broker_submission": False,
+            "approval_audit": audit_gate,
+        }
+
     moomoo = check_moomoo_status()
     if (
         not moomoo.get("paper_account_ready")
@@ -146,6 +163,63 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         "paper_execution_enabled": True,
         "broker_submission": True,
         "moomoo": moomoo,
+    }
+
+
+def parse_payload(approval: dict) -> dict:
+    payload = approval.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    if not isinstance(payload, str):
+        return {}
+    try:
+        parsed = json.loads(payload)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def validate_approval_payload_for_execution(approval: dict) -> dict:
+    payload = parse_payload(approval)
+    errors = []
+    preview = payload.get("preview")
+    approval_payload = payload.get("approval")
+    if not isinstance(preview, dict):
+        errors.append("payload.preview_missing")
+        preview = {}
+    if not isinstance(approval_payload, dict):
+        errors.append("payload.approval_missing")
+        approval_payload = {}
+
+    quote = preview.get("quote_snapshot")
+    if not isinstance(quote, dict):
+        errors.append("payload.preview.quote_snapshot_missing")
+    else:
+        for field in ["symbol", "latest_close", "source"]:
+            if quote.get(field) in {None, ""}:
+                errors.append(f"payload.preview.quote_snapshot.{field}_missing")
+
+    agents = preview.get("agent_summary")
+    if not isinstance(agents, dict):
+        errors.append("payload.preview.agent_summary_missing")
+        agents = {}
+    shariah = agents.get("shariah") if isinstance(agents.get("shariah"), dict) else {}
+    risk = agents.get("risk") if isinstance(agents.get("risk"), dict) else {}
+    if shariah.get("status") != "PASS":
+        errors.append("payload.preview.agent_summary.shariah.status_must_be_PASS")
+    if risk.get("status") != "PASS":
+        errors.append("payload.preview.agent_summary.risk.status_must_be_PASS")
+
+    if approval_payload.get("status") != "APPROVED_PAPER_READY":
+        errors.append("payload.approval.status_must_be_APPROVED_PAPER_READY")
+    blockers = preview.get("blockers")
+    if blockers:
+        errors.append("payload.preview.blockers_must_be_empty")
+
+    return {
+        "status": "PASS" if not errors else "REJECT",
+        "errors": errors,
+        "quote_snapshot": quote if isinstance(quote, dict) else None,
     }
 
 

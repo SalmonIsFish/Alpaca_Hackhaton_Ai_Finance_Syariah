@@ -36,6 +36,7 @@ def make_connection() -> sqlite3.Connection:
 
 
 def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS", risk_status: str = "PASS", side: str = "BUY", quantity: int = 1) -> int:
+    blockers = [] if shariah_status == "PASS" and risk_status == "PASS" else ["test_blocker"]
     preview = {
         "status": "READY_FOR_APPROVAL",
         "execution": "PAPER_ONLY",
@@ -45,6 +46,19 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
         "quantity": quantity,
         "price": 333.74,
         "notional": round(quantity * 333.74, 2),
+        "blockers": blockers,
+        "quote_snapshot": {
+            "symbol": "AAPL",
+            "latest_close": 333.74,
+            "latest_date": "2026-07-24",
+            "source": "test_price",
+            "bars": 220,
+            "min_bars": 1,
+            "enough_history": True,
+            "fallback_allowed": False,
+            "stale_cache_allowed": True,
+            "quote_snapshot_source": "test",
+        },
         "agent_summary": {
             "shariah": {"status": shariah_status, "market": "US", "provider": "ZOYA"},
             "quant": {"status": "PASS", "signal": side},
@@ -57,6 +71,14 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
         "execution_environment": "SIMULATE",
     }
     return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)["id"]
+
+
+def mutate_payload(connection: sqlite3.Connection, queue_id: int, mutator) -> None:
+    row = connection.execute("SELECT payload FROM approval_queue WHERE id = ?", (queue_id,)).fetchone()
+    payload = json.loads(row["payload"])
+    mutator(payload)
+    connection.execute("UPDATE approval_queue SET payload = ? WHERE id = ?", (json.dumps(payload, sort_keys=True), queue_id))
+    connection.commit()
 
 
 def seed_position(connection: sqlite3.Connection, *, quantity: float, account_suffix: str = "1234") -> None:
@@ -122,6 +144,21 @@ def main() -> None:
         adapter_result = execute_paper_order(connection, adapter_id)
         assert adapter_result["status"] == "ADAPTER_NOT_CONFIGURED"
         assert adapter_result["broker_submission"] is False
+
+        set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
+        missing_quote_id = add_approval(connection)
+        mutate_payload(connection, missing_quote_id, lambda payload: payload["preview"].pop("quote_snapshot"))
+        missing_quote_result = execute_paper_order(connection, missing_quote_id)
+        assert missing_quote_result["status"] == "APPROVAL_AUDIT_FAILED"
+        assert "payload.preview.quote_snapshot_missing" in missing_quote_result["approval_audit"]["errors"]
+        assert missing_quote_result["broker_submission"] is False
+
+        stale_blocker_id = add_approval(connection)
+        mutate_payload(connection, stale_blocker_id, lambda payload: payload["preview"].update({"blockers": ["portfolio_position_limit"]}))
+        stale_blocker_result = execute_paper_order(connection, stale_blocker_id)
+        assert stale_blocker_result["status"] == "APPROVAL_AUDIT_FAILED"
+        assert "payload.preview.blockers_must_be_empty" in stale_blocker_result["approval_audit"]["errors"]
+        assert stale_blocker_result["broker_submission"] is False
 
         set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
         sell_without_position_id = add_approval(connection, side="SELL")
