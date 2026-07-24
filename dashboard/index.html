@@ -846,6 +846,21 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>Risk Policy</h2>
+            <span id="riskPolicyBadge" class="badge warn">Not checked</span>
+          </div>
+          <div class="portfolio-summary">
+            <div class="paper-order-field"><span>Account Equity</span><strong id="riskAccountEquity">-</strong></div>
+            <div class="paper-order-field"><span>Position Limit</span><strong id="riskMaxPosition">-</strong></div>
+            <div class="paper-order-field"><span>Total Limit</span><strong id="riskMaxTotal">-</strong></div>
+            <div class="paper-order-field"><span>Total Exposure</span><strong id="riskCurrentTotalExposure">-</strong></div>
+            <div class="paper-order-field"><span>Add-On Policy</span><strong id="riskSameSymbolPolicy">-</strong></div>
+            <div class="paper-order-field"><span>Current Ticket</span><strong id="riskTicketStatus">-</strong></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>Portfolio/Risk</h2>
             <span id="portfolioBadge" class="badge warn">0 Positions</span>
           </div>
@@ -912,6 +927,13 @@
     const approvalQueueCount = document.querySelector("#approvalQueueCount");
     const paperOrdersList = document.querySelector("#paperOrdersList");
     const paperOrdersCount = document.querySelector("#paperOrdersCount");
+    const riskPolicyBadge = document.querySelector("#riskPolicyBadge");
+    const riskAccountEquity = document.querySelector("#riskAccountEquity");
+    const riskMaxPosition = document.querySelector("#riskMaxPosition");
+    const riskMaxTotal = document.querySelector("#riskMaxTotal");
+    const riskCurrentTotalExposure = document.querySelector("#riskCurrentTotalExposure");
+    const riskSameSymbolPolicy = document.querySelector("#riskSameSymbolPolicy");
+    const riskTicketStatus = document.querySelector("#riskTicketStatus");
     const portfolioBadge = document.querySelector("#portfolioBadge");
     const portfolioCostBasis = document.querySelector("#portfolioCostBasis");
     const portfolioMarketValue = document.querySelector("#portfolioMarketValue");
@@ -1098,6 +1120,30 @@
       }
       document.querySelector("#positionPct").value = Number(selectedPositionExposurePct()).toFixed(2);
       document.querySelector("#totalExposurePct").value = Number(currentPortfolio.total_exposure_pct || 0).toFixed(2);
+      renderRiskPolicy(currentPreview);
+    }
+
+    function renderRiskPolicy(preview = null) {
+      if (!currentPortfolio) {
+        setBadge(riskPolicyBadge, "Not checked", "warn");
+        return;
+      }
+      const limits = currentPortfolio.risk_limits || {};
+      riskAccountEquity.textContent = formatMoney(currentPortfolio.paper_account_equity);
+      riskMaxPosition.textContent = formatPct(limits.max_position_pct);
+      riskMaxTotal.textContent = formatPct(limits.max_total_exposure_pct);
+      riskCurrentTotalExposure.textContent = formatPct(currentPortfolio.total_exposure_pct);
+      riskSameSymbolPolicy.textContent = "BUY add-ons blocked";
+      const portfolioRisk = preview?.agent_summary?.risk?.details?.portfolio;
+      if (portfolioRisk) {
+        const ok = portfolioRisk.status === "PASS";
+        setMetric(riskTicketStatus, ok ? "Pass" : "Blocked", ok ? "ok" : "bad");
+        setBadge(riskPolicyBadge, ok ? "Ticket Pass" : "Ticket Blocked", ok ? "ok" : "bad");
+        return;
+      }
+      const selectedExposure = selectedPositionExposurePct();
+      setMetric(riskTicketStatus, `${formatPct(selectedExposure)} current`, selectedExposure <= (limits.max_position_pct || 0) ? "ok" : "bad");
+      setBadge(riskPolicyBadge, "Policy Active", "ok");
     }
 
     function setTheme(theme) {
@@ -1168,6 +1214,7 @@
       rejectButton.disabled = false;
       rawOutput.textContent = JSON.stringify(payload, null, 2);
       renderCommittee(currentSystemMode || { agent_team: [], effective_paper_execution_allowed: false }, preview);
+      renderRiskPolicy(preview);
     }
 
     async function refreshStatus() {
@@ -1542,6 +1589,7 @@
               <span>Cost ${formatMoney(position.cost_basis)} | Account Exposure ${formatPct(position.account_exposure_pct)} | Portfolio Weight ${formatPct(position.exposure_weight_pct)} | Source ${position.price_source || "-"} ${position.price_date || ""}</span>
               <span>Realized P&L ${formatMoney(position.realized_pnl)} | Account ${position.account_type || "-"} ${position.account_suffix || "-"}</span>
               <span>Updated ${formatLocalTime(position.updated_at)}</span>
+              <button class="secondary queue-action" type="button" data-reduce-symbol="${position.symbol}" data-reduce-quantity="${position.quantity}" data-reduce-price="${position.latest_price ?? position.average_cost ?? ""}">Reduce</button>
             </div>
           </div>
         `;
@@ -1581,6 +1629,25 @@
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);
       }
+    }
+
+    function usePositionForReduce(button) {
+      document.querySelector("#symbol").value = button.dataset.reduceSymbol || "";
+      document.querySelector("#side").value = "SELL";
+      document.querySelector("#quantity").value = Math.max(1, Math.floor(Number(button.dataset.reduceQuantity || 1)));
+      if (button.dataset.reducePrice) {
+        document.querySelector("#price").value = Number(button.dataset.reducePrice).toFixed(2);
+      }
+      document.querySelector("#testFixture").checked = false;
+      currentPreview = null;
+      refreshExposureInputs();
+      setMetric(previewStatus, "No preview", "warn");
+      setMetric(approvalStatus, "Not approved", "warn");
+      setBadge(approvalBadge, "Awaiting Agents", "warn");
+      approveButton.disabled = true;
+      rejectButton.disabled = true;
+      rawOutput.textContent = "Position loaded into ticket. Run agents before approval.";
+      setBadge(responseBadge, "Ticket Ready", "warn");
     }
 
     async function scanOpportunities(options = {}) {
@@ -1723,6 +1790,7 @@
       rejectButton.disabled = true;
       rawOutput.textContent = "Refresh status or create a preview.";
       refreshExposureInputs();
+      renderRiskPolicy();
     }
 
     const savedTheme = localStorage.getItem("amanah-theme");
@@ -1786,6 +1854,12 @@
       const button = event.target.closest("[data-reconcile-id]");
       if (button) {
         reconcilePaperOrder(button.dataset.reconcileId);
+      }
+    });
+    portfolioList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-reduce-symbol]");
+      if (button) {
+        usePositionForReduce(button);
       }
     });
     refreshStatus();

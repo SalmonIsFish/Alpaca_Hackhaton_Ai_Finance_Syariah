@@ -160,6 +160,8 @@ Next recommended build step:
    - decide whether same-symbol add-ons should always block or only block above the 5% position ceiling
    - consider per-symbol overrides for highly liquid names if needed
    - keep pricing read-only and order placement behind the existing gates
+   - Risk Policy panel now displays the active denominator, limits, current exposure, add-on policy, and current ticket pass/block state
+   - Portfolio rows now include a `Reduce` action that fills the ticket as a reduce-only SELL preview
 
 2. After portfolio/risk limits are reliable, add market/investment-firm features:
    - watchlist
@@ -185,6 +187,8 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - SELL previews are reduce-only and can become `READY_FOR_APPROVAL` when a local position exists and the sell quantity does not exceed local quantity.
   - full-position SELL projections now reduce position and total exposure to zero.
   - Dashboard exposure inputs accept two decimal places such as `3.22`.
+  - Dashboard Risk Policy panel shows account equity, risk limits, current exposure, same-symbol add-on policy, and current ticket state.
+  - Portfolio `Reduce` buttons populate a SELL ticket from the local position.
   - `CLAUDE.md` was added as the Claude Code handoff file.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.

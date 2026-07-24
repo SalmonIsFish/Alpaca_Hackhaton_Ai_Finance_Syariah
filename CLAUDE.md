@@ -46,10 +46,11 @@ python backend/test_moomoo_paper_adapter.py
 - BUY add-ons for an existing symbol are blocked by policy.
 - SELL previews are reduce-only: they can become ready only when the local paper position exists and sell quantity does not exceed local quantity.
 - Dashboard shows readable blocker messages in Agent Summary, Investment Committee, and Approval Queue.
+- Dashboard has a Risk Policy panel showing account equity, risk limits, total exposure, add-on policy, and the current ticket state.
+- Portfolio rows have a `Reduce` button that loads a SELL ticket from the local position.
 
 ## Good Next Tasks
 
-1. Add a small Risk Policy panel to display `PAPER_ACCOUNT_EQUITY`, max position %, max total exposure %, and same-symbol add-on policy.
-2. Make risk limits configurable through env vars instead of constants in `risk_checks.py`.
-3. Add a dedicated Positions page or table with reduce/sell actions generated from local holdings.
-4. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+1. Make risk limits configurable through env vars instead of constants in `risk_checks.py`.
+2. Add a dedicated Positions page or table with clearer partial-reduce controls.
+3. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
