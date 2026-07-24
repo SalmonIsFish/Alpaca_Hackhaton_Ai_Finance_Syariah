@@ -211,6 +211,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - filled SELL reconciliations are rejected with `INVALID_SELL_FILL` when local holdings are missing or smaller than the fill quantity.
   - rejected SELL fills are not inserted into `paper_fills` and do not change `paper_positions`.
   - tests cover no-position and oversized SELL reconciliation before any ledger mutation.
+- Stock profile backend contract was added on July 25, 2026:
+  - `GET /stock/{symbol}/profile` combines Shariah status, market data, latest opportunity scan result, local portfolio exposure, and active risk limits.
+  - this is a read-only API intended to support a future Claude Code stock detail page without changing broker or execution behavior.
+  - `test_stock_profile.py` verifies the contract using fixture market, scan, and portfolio data.
 - Approval payload audit guard was added on July 25, 2026:
   - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
   - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.

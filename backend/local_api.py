@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from agent_coordinator import evaluate_candidate
+from agents.shariah_agent import detect_market, evaluate_shariah
 from approval_queue import ensure_approval_queue, get_approval, list_approvals, record_approval
 from approval_workflow import approve_candidate
 from config import load_settings
@@ -22,6 +23,7 @@ from trading_modes import trading_mode_status
 from watchlist_store import (
     ensure_watchlist_tables,
     get_watchlist_settings,
+    list_latest_scan_results,
     latest_scan_snapshot,
     list_alert_events,
     save_opportunity_scan,
@@ -185,6 +187,73 @@ def portfolio_snapshot_with_exposure(connection: sqlite3.Connection) -> dict:
     )
     snapshot["risk_limits"] = risk_limits_from_settings(settings)
     return snapshot
+
+
+def stock_profile_snapshot(connection: sqlite3.Connection, symbol: str) -> dict:
+    normalized_symbol = symbol.strip().upper()
+    settings = load_settings()
+    profile = {
+        "status": "OK" if normalized_symbol else "INVALID_SYMBOL",
+        "symbol": normalized_symbol,
+        "market": detect_market(normalized_symbol) if normalized_symbol else None,
+        "shariah": None,
+        "market_data": None,
+        "latest_opportunity": None,
+        "portfolio": {
+            "positions": [],
+            "quantity": 0.0,
+            "cost_basis": 0.0,
+            "market_value": 0.0,
+            "unrealized_pnl": 0.0,
+            "account_exposure_pct": 0.0,
+        },
+        "risk_limits": risk_limits_from_settings(settings),
+        "errors": [],
+    }
+    if not normalized_symbol:
+        profile["errors"].append({"section": "symbol", "reason": "symbol_required"})
+        return profile
+
+    try:
+        profile["shariah"] = evaluate_shariah(normalized_symbol)
+    except Exception as exc:
+        profile["errors"].append({"section": "shariah", "reason": type(exc).__name__})
+
+    try:
+        profile["market_data"] = summarize_history(
+            normalized_symbol,
+            days=365,
+            min_bars=200,
+            allow_fallback=False,
+            allow_stale_cache=True,
+        )
+    except Exception as exc:
+        profile["errors"].append({"section": "market_data", "reason": type(exc).__name__})
+
+    latest_results = list_latest_scan_results(connection, symbols=[normalized_symbol])
+    if latest_results:
+        profile["latest_opportunity"] = latest_results[0]
+
+    portfolio = portfolio_snapshot_with_exposure(connection)
+    positions = [position for position in portfolio.get("positions", []) if position.get("symbol") == normalized_symbol]
+    market_value = round(sum(float(position.get("market_value") or 0) for position in positions), 4)
+    cost_basis = round(sum(float(position.get("cost_basis") or 0) for position in positions), 4)
+    quantity = round(sum(float(position.get("quantity") or 0) for position in positions), 4)
+    unrealized_pnl = round(sum(float(position.get("unrealized_pnl") or 0) for position in positions), 4)
+    exposure_value_total = round(sum(exposure_value(position) for position in positions), 4)
+    profile["portfolio"] = {
+        "positions": positions,
+        "quantity": quantity,
+        "cost_basis": cost_basis,
+        "market_value": market_value,
+        "unrealized_pnl": unrealized_pnl,
+        "account_exposure_pct": round((exposure_value_total / settings.paper_account_equity) * 100, 4),
+        "valuation_status": portfolio.get("valuation_status"),
+        "valuation_errors": [
+            error for error in portfolio.get("valuation_errors", []) if error.get("symbol") == normalized_symbol
+        ],
+    }
+    return profile
 
 
 def risk_limits_from_settings(settings) -> dict:
@@ -416,6 +485,7 @@ def home() -> dict:
             "/paper/status",
             "/moomoo/status",
             "/market-data/{symbol}",
+            "/stock/{symbol}/profile",
             "/watchlist",
             "/opportunities",
             "/opportunity-alerts",
@@ -471,6 +541,15 @@ def system_mode() -> dict:
 @app.get("/market-data/{symbol}")
 def market_data_status(symbol: str) -> dict:
     return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
+
+
+@app.get("/stock/{symbol}/profile")
+def stock_profile(symbol: str) -> dict:
+    connection = db()
+    try:
+        return stock_profile_snapshot(connection, symbol)
+    finally:
+        connection.close()
 
 
 @app.get("/watchlist")

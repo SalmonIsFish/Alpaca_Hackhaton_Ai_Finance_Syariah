@@ -54,6 +54,7 @@ def main() -> None:
     assert "/paper/status" in home_payload["routes"]
     assert "/moomoo/status" in home_payload["routes"]
     assert "/market-data/{symbol}" in home_payload["routes"]
+    assert "/stock/{symbol}/profile" in home_payload["routes"]
     assert "/watchlist" in home_payload["routes"]
     assert "/opportunities" in home_payload["routes"]
     assert "/opportunity-alerts" in home_payload["routes"]
