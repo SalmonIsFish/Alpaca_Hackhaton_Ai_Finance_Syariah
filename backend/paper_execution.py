@@ -10,6 +10,7 @@ from approval_queue import get_approval, record_broker_reconciliation, record_br
 from config import load_settings
 from moomoo_status import check_moomoo_status
 from moomoo_paper_adapter import reconcile_paper_order, submit_paper_order
+from portfolio_store import open_position_quantity
 from trading_modes import mode_capabilities
 
 
@@ -102,6 +103,23 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         )
         return {**result, "status": result["execution_status"], "queue_id": queue_id, "moomoo": moomoo, "broker_submission": False}
 
+    sell_gate = validate_sell_reduction(connection, approval, moomoo)
+    if sell_gate["status"] != "PASS":
+        result = update_execution_status(
+            connection,
+            queue_id,
+            status="PORTFOLIO_SELL_GATE_FAILED",
+            message=sell_gate["reason"],
+        )
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "broker_submission": False,
+            "moomoo": moomoo,
+            "portfolio_gate": sell_gate,
+        }
+
     broker_response = submit_paper_order(approval, moomoo)
     if not broker_response.get("broker_submission"):
         result = update_execution_status(
@@ -128,6 +146,52 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         "paper_execution_enabled": True,
         "broker_submission": True,
         "moomoo": moomoo,
+    }
+
+
+def validate_sell_reduction(connection: sqlite3.Connection, approval: dict, moomoo: dict) -> dict:
+    side = str(approval.get("side") or "BUY").upper()
+    if side != "SELL":
+        return {"status": "PASS", "side": side}
+
+    symbol = str(approval.get("symbol") or "").upper()
+    quantity = float(approval.get("quantity") or 0)
+    account_suffix = moomoo.get("account_suffix")
+    available_quantity = open_position_quantity(connection, symbol=symbol, account_suffix=account_suffix)
+    if quantity <= 0:
+        return {
+            "status": "REJECT",
+            "reason": "sell_quantity_must_be_positive",
+            "symbol": symbol,
+            "requested_quantity": quantity,
+            "available_quantity": available_quantity,
+            "account_suffix": account_suffix,
+        }
+    if available_quantity <= 0:
+        return {
+            "status": "REJECT",
+            "reason": f"no local {symbol} position is available for account {account_suffix}",
+            "symbol": symbol,
+            "requested_quantity": quantity,
+            "available_quantity": available_quantity,
+            "account_suffix": account_suffix,
+        }
+    if quantity > available_quantity:
+        return {
+            "status": "REJECT",
+            "reason": f"sell quantity {quantity:g} exceeds local {symbol} position {available_quantity:g} for account {account_suffix}",
+            "symbol": symbol,
+            "requested_quantity": quantity,
+            "available_quantity": available_quantity,
+            "account_suffix": account_suffix,
+        }
+    return {
+        "status": "PASS",
+        "side": side,
+        "symbol": symbol,
+        "requested_quantity": quantity,
+        "available_quantity": available_quantity,
+        "account_suffix": account_suffix,
     }
 
 

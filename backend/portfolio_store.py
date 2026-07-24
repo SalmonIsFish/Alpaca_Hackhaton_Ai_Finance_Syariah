@@ -217,6 +217,30 @@ def apply_fill_to_position(
     }
 
 
+def open_position_quantity(connection: sqlite3.Connection, *, symbol: str, account_suffix: str | None = None) -> float:
+    ensure_portfolio_tables(connection)
+    normalized_symbol = symbol.strip().upper()
+    if account_suffix:
+        row = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity
+            FROM paper_positions
+            WHERE symbol = ? AND account_suffix = ? AND quantity > 0
+            """,
+            (normalized_symbol, str(account_suffix)),
+        ).fetchone()
+    else:
+        row = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity
+            FROM paper_positions
+            WHERE symbol = ? AND quantity > 0
+            """,
+            (normalized_symbol,),
+        ).fetchone()
+    return round(float(row["quantity"] or 0), 4)
+
+
 def portfolio_snapshot(connection: sqlite3.Connection, *, price_lookup=None) -> dict:
     ensure_portfolio_tables(connection)
     positions = [

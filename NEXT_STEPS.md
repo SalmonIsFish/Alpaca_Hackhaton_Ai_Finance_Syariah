@@ -203,6 +203,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `/paper/preview` now records `quote_snapshot` with latest close, price date, source, freshness/cache fields, and bar count.
   - approval queue payloads persist the quote snapshot for audit.
   - dashboard Approval Queue and Paper Orders show preview quote metadata.
+- Execution-time reduce-only SELL guard was added on July 25, 2026:
+  - `/paper/execute/{queue_id}` now re-checks local portfolio quantity before submitting any SELL.
+  - SELL is rejected with `PORTFOLIO_SELL_GATE_FAILED` if no local position exists or requested quantity exceeds the active paper account suffix.
+  - Tests cover no-position SELL, oversized SELL, and valid reduce SELL without contacting Moomoo.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
   - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.

@@ -52,6 +52,7 @@ python backend/test_moomoo_paper_adapter.py
 - Portfolio ledger tests cover partial and full SELL fills, including realized P&L after a position is closed.
 - Moomoo adapter tests cover SELL side mapping without contacting OpenD.
 - `/paper/preview` stores a read-only `quote_snapshot` for audit, and approval queue payloads preserve it.
+- `/paper/execute/{queue_id}` has an execution-time reduce-only SELL guard against the local paper portfolio and active account suffix.
 
 ## Good Next Tasks
 

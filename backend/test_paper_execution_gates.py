@@ -7,6 +7,7 @@ import sqlite3
 import paper_execution
 from approval_queue import get_approval, record_approval
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order
+from portfolio_store import apply_fill_to_position, ensure_portfolio_tables
 
 
 READY_MOOMOO = {
@@ -34,19 +35,19 @@ def make_connection() -> sqlite3.Connection:
     return connection
 
 
-def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS", risk_status: str = "PASS") -> int:
+def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS", risk_status: str = "PASS", side: str = "BUY", quantity: int = 1) -> int:
     preview = {
         "status": "READY_FOR_APPROVAL",
         "execution": "PAPER_ONLY",
         "broker_submission": False,
         "symbol": "AAPL",
-        "side": "BUY",
-        "quantity": 1,
+        "side": side,
+        "quantity": quantity,
         "price": 333.74,
-        "notional": 333.74,
+        "notional": round(quantity * 333.74, 2),
         "agent_summary": {
             "shariah": {"status": shariah_status, "market": "US", "provider": "ZOYA"},
-            "quant": {"status": "PASS", "signal": "BUY"},
+            "quant": {"status": "PASS", "signal": side},
             "risk": {"status": risk_status},
         },
     }
@@ -56,6 +57,20 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
         "execution_environment": "SIMULATE",
     }
     return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)["id"]
+
+
+def seed_position(connection: sqlite3.Connection, *, quantity: float, account_suffix: str = "1234") -> None:
+    ensure_portfolio_tables(connection)
+    apply_fill_to_position(
+        connection,
+        symbol="AAPL",
+        account_suffix=account_suffix,
+        account_type="CASH",
+        side="BUY",
+        quantity=quantity,
+        avg_price=300.0,
+    )
+    connection.commit()
 
 
 def set_execution_env(*, trading_mode: str = "approval", enabled: bool = True, adapter: str = "disabled") -> None:
@@ -107,6 +122,26 @@ def main() -> None:
         adapter_result = execute_paper_order(connection, adapter_id)
         assert adapter_result["status"] == "ADAPTER_NOT_CONFIGURED"
         assert adapter_result["broker_submission"] is False
+
+        set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
+        sell_without_position_id = add_approval(connection, side="SELL")
+        sell_without_position_result = execute_paper_order(connection, sell_without_position_id)
+        assert sell_without_position_result["status"] == "PORTFOLIO_SELL_GATE_FAILED"
+        assert sell_without_position_result["broker_submission"] is False
+        assert sell_without_position_result["portfolio_gate"]["available_quantity"] == 0.0
+
+        seed_position(connection, quantity=1.0)
+        sell_exceeds_position_id = add_approval(connection, side="SELL", quantity=2)
+        sell_exceeds_position_result = execute_paper_order(connection, sell_exceeds_position_id)
+        assert sell_exceeds_position_result["status"] == "PORTFOLIO_SELL_GATE_FAILED"
+        assert sell_exceeds_position_result["broker_submission"] is False
+        assert sell_exceeds_position_result["portfolio_gate"]["available_quantity"] == 1.0
+
+        sell_reduce_id = add_approval(connection, side="SELL")
+        sell_reduce_result = execute_paper_order(connection, sell_reduce_id)
+        assert sell_reduce_result["status"] == "BROKER_SUBMITTED"
+        assert sell_reduce_result["broker_submission"] is True
+        assert sell_reduce_result["broker_response"]["side"] == "SELL"
 
         set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
         submitted_id = add_approval(connection)
