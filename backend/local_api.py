@@ -10,13 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from agent_coordinator import evaluate_candidate
-from approval_queue import ensure_approval_queue, list_approvals, record_approval
+from approval_queue import ensure_approval_queue, get_approval, list_approvals, record_approval
 from approval_workflow import approve_candidate
 from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
-from paper_execution import execute_paper_order
+from paper_execution import execute_paper_order, reconcile_submitted_paper_order
+from portfolio_store import ensure_portfolio_tables, portfolio_snapshot, sync_filled_order
+from risk_checks import MAX_POSITION_PCT, MAX_TOTAL_EXPOSURE_PCT
 from trading_modes import trading_mode_status
 from watchlist_store import (
     ensure_watchlist_tables,
@@ -45,6 +47,7 @@ def db() -> sqlite3.Connection:
     connection.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL)")
     ensure_approval_queue(connection)
     ensure_watchlist_tables(connection)
+    ensure_portfolio_tables(connection)
     connection.commit()
     return connection
 
@@ -146,8 +149,186 @@ def paper_test_overrides(request: PaperPreviewRequest) -> dict:
     }
 
 
+def portfolio_price_lookup(symbol: str) -> dict:
+    return summarize_history(
+        symbol,
+        days=14,
+        min_bars=1,
+        allow_fallback=False,
+        allow_stale_cache=True,
+    )
+
+
+def exposure_value(position: dict) -> float:
+    value = position.get("market_value")
+    if value is None:
+        value = position.get("cost_basis")
+    return float(value or 0)
+
+
+def add_exposure_metadata(snapshot: dict, *, account_equity: float) -> dict:
+    total_exposure = round(sum(exposure_value(position) for position in snapshot.get("positions", [])), 4)
+    snapshot["paper_account_equity"] = account_equity
+    snapshot["total_exposure"] = total_exposure
+    snapshot["total_exposure_pct"] = round((total_exposure / account_equity) * 100, 4)
+    snapshot["risk_limits"] = {
+        "max_position_pct": MAX_POSITION_PCT,
+        "max_total_exposure_pct": MAX_TOTAL_EXPOSURE_PCT,
+    }
+    for position in snapshot.get("positions", []):
+        value = exposure_value(position)
+        position["exposure_value"] = round(value, 4)
+        position["account_exposure_pct"] = round((value / account_equity) * 100, 4)
+    return snapshot
+
+
+def portfolio_snapshot_with_exposure(connection: sqlite3.Connection) -> dict:
+    settings = load_settings()
+    return add_exposure_metadata(
+        portfolio_snapshot(connection, price_lookup=portfolio_price_lookup),
+        account_equity=settings.paper_account_equity,
+    )
+
+
+def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict) -> dict:
+    settings = load_settings()
+    symbol = evaluation.get("symbol") or request.symbol.strip().upper()
+    side = request.side.strip().upper()
+    selected_price = evaluation.get("price") or request.price
+    notional = round(request.quantity * selected_price, 4) if selected_price else 0
+    snapshot = portfolio_snapshot_with_exposure(connection)
+    matching_positions = [position for position in snapshot.get("positions", []) if position.get("symbol") == symbol]
+    current_position_exposure = round(
+        sum(exposure_value(position) for position in matching_positions),
+        4,
+    )
+    current_position_quantity = round(sum(float(position.get("quantity") or 0) for position in matching_positions), 4)
+    current_total_exposure = round(snapshot.get("total_exposure") or 0, 4)
+    if side == "SELL":
+        projected_position_quantity = max(0, round(current_position_quantity - request.quantity, 4))
+        remaining_ratio = projected_position_quantity / current_position_quantity if current_position_quantity else 0
+        projected_position_exposure = round(current_position_exposure * remaining_ratio, 4)
+        reduced_exposure = round(current_position_exposure - projected_position_exposure, 4)
+        projected_total_exposure = max(0, round(current_total_exposure - reduced_exposure, 4))
+    else:
+        projected_position_quantity = round(current_position_quantity + request.quantity, 4)
+        projected_position_exposure = max(0, round(current_position_exposure + notional, 4))
+        projected_total_exposure = max(0, round(current_total_exposure + notional, 4))
+    projected_position_pct = round((projected_position_exposure / settings.paper_account_equity) * 100, 4)
+    projected_total_pct = round((projected_total_exposure / settings.paper_account_equity) * 100, 4)
+    effective_position_pct = max(request.position_pct, projected_position_pct)
+    effective_total_pct = max(request.total_exposure_pct, projected_total_pct)
+    blockers = []
+    warnings = []
+    messages = {}
+    if projected_position_pct > MAX_POSITION_PCT:
+        blockers.append("portfolio_position_limit")
+        messages["portfolio_position_limit"] = f"{symbol} would become {projected_position_pct:.2f}% of paper account equity, above the {MAX_POSITION_PCT:.2f}% position limit."
+    if projected_total_pct > MAX_TOTAL_EXPOSURE_PCT:
+        blockers.append("portfolio_total_exposure_limit")
+        messages["portfolio_total_exposure_limit"] = f"Total projected exposure would become {projected_total_pct:.2f}% of paper account equity, above the {MAX_TOTAL_EXPOSURE_PCT:.2f}% total exposure limit."
+    if side == "BUY" and current_position_exposure > 0:
+        blockers.append("portfolio_existing_position")
+        messages["portfolio_existing_position"] = f"{symbol} is already held locally; same-symbol BUY add-ons are blocked until the risk policy is changed."
+    if side == "SELL" and current_position_quantity <= 0:
+        blockers.append("portfolio_sell_without_position")
+        messages["portfolio_sell_without_position"] = f"{symbol} cannot be sold because no local paper position is recorded."
+    if side == "SELL" and current_position_quantity > 0 and request.quantity > current_position_quantity:
+        blockers.append("portfolio_sell_exceeds_position")
+        messages["portfolio_sell_exceeds_position"] = f"Sell quantity {request.quantity} exceeds the local {symbol} position of {current_position_quantity:g}."
+    if side == "SELL" and current_position_quantity > 0 and request.quantity <= current_position_quantity:
+        warnings.append("portfolio_reduce_position")
+        messages["portfolio_reduce_position"] = f"{symbol} SELL would reduce the local position from {current_position_quantity:g} to {projected_position_quantity:g} shares."
+    return {
+        "status": "PASS" if not blockers else "REJECT",
+        "reason": "portfolio_limits_passed" if not blockers else "portfolio_limit_failed",
+        "blockers": blockers,
+        "warnings": warnings,
+        "messages": messages,
+        "account_equity": settings.paper_account_equity,
+        "symbol": symbol,
+        "side": side,
+        "order_notional": notional,
+        "current_position_exposure": current_position_exposure,
+        "current_position_quantity": current_position_quantity,
+        "current_total_exposure": current_total_exposure,
+        "projected_position_exposure": projected_position_exposure,
+        "projected_position_quantity": projected_position_quantity,
+        "projected_total_exposure": projected_total_exposure,
+        "submitted_position_pct": request.position_pct,
+        "submitted_total_exposure_pct": request.total_exposure_pct,
+        "projected_position_pct": projected_position_pct,
+        "projected_total_exposure_pct": projected_total_pct,
+        "effective_position_pct": round(effective_position_pct, 4),
+        "effective_total_exposure_pct": round(effective_total_pct, 4),
+        "limits": {
+            "max_position_pct": MAX_POSITION_PCT,
+            "max_total_exposure_pct": MAX_TOTAL_EXPOSURE_PCT,
+        },
+        "valuation_status": snapshot.get("valuation_status"),
+        "valuation_errors": snapshot.get("valuation_errors", []),
+    }
+
+
+def apply_portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict) -> dict:
+    overlay = portfolio_risk_overlay(connection, request, evaluation)
+    risk = evaluation.setdefault("agent_summary", {}).setdefault("risk", {})
+    details = risk.setdefault("details", {})
+    checks = details.setdefault("checks", {})
+    checks["portfolio_position_ceiling"] = overlay["projected_position_pct"] <= MAX_POSITION_PCT
+    checks["portfolio_total_exposure"] = overlay["projected_total_exposure_pct"] <= MAX_TOTAL_EXPOSURE_PCT
+    details["portfolio"] = overlay
+    if request.side.strip().upper() == "SELL" and overlay["status"] == "PASS":
+        blockers = evaluation.setdefault("blockers", [])
+        blockers[:] = [blocker for blocker in blockers if blocker not in {"only_buy_side_supported", "quant_no_buy_signal"}]
+        if not blockers:
+            evaluation["decision"] = "READY_FOR_APPROVAL"
+    if overlay["status"] != "PASS":
+        risk["status"] = "REJECT"
+        risk["reason"] = overlay["reason"]
+        details["status"] = "REJECT"
+        blockers = evaluation.setdefault("blockers", [])
+        for blocker in overlay["blockers"]:
+            if blocker not in blockers:
+                blockers.append(blocker)
+        if "risk_rejected" not in blockers:
+            blockers.append("risk_rejected")
+        evaluation["decision"] = "BLOCKED"
+    evaluation["blocker_messages"] = blocker_messages_for_evaluation(evaluation)
+    return evaluation
+
+
+def blocker_messages_for_evaluation(evaluation: dict) -> list[dict]:
+    agents = evaluation.get("agent_summary", {})
+    quant = agents.get("quant", {})
+    risk = agents.get("risk", {})
+    portfolio = risk.get("details", {}).get("portfolio", {})
+    portfolio_messages = portfolio.get("messages", {})
+    messages = []
+    for blocker in evaluation.get("blockers", []):
+        message = portfolio_messages.get(blocker)
+        if message is None and blocker == "quant_no_buy_signal":
+            strategy = quant.get("strategy", {})
+            gap = strategy.get("breakout_gap_pct")
+            breakout_level = strategy.get("breakout_level")
+            if gap is not None and breakout_level is not None:
+                message = f"Quant signal is {quant.get('signal', 'NO_SIGNAL')} because price is {abs(float(gap)):.2f}% below breakout level {float(breakout_level):.2f}."
+            else:
+                message = f"Quant signal is {quant.get('signal', 'NO_SIGNAL')}; strategy conditions are not met."
+        if message is None and blocker == "only_buy_side_supported":
+            message = "This side is not supported by the current approval workflow."
+        if message is None and blocker == "risk_rejected":
+            message = risk.get("reason", "Risk engine rejected this order.")
+        if message is None and blocker == "shariah_rejected":
+            message = "Shariah agent rejected this symbol."
+        if message is None:
+            message = blocker
+        messages.append({"blocker": blocker, "message": message})
+    return messages
+
+
 def evaluate_preview_request(request: PaperPreviewRequest) -> dict:
-    return evaluate_candidate(
+    evaluation = evaluate_candidate(
         symbol=request.symbol,
         side=request.side,
         quantity=request.quantity,
@@ -159,6 +340,11 @@ def evaluate_preview_request(request: PaperPreviewRequest) -> dict:
         orders_today=request.orders_today,
         **paper_test_overrides(request),
     )
+    connection = db()
+    try:
+        return apply_portfolio_risk_overlay(connection, request, evaluation)
+    finally:
+        connection.close()
 
 
 @app.get("/")
@@ -181,6 +367,8 @@ def home() -> dict:
             "/paper/preview",
             "/paper/approval",
             "/paper/execute/{queue_id}",
+            "/paper/reconcile/{queue_id}",
+            "/portfolio",
             "/approvals",
             "/audit",
         ],
@@ -359,6 +547,7 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "notional": evaluation["notional"],
             "side": side,
             "broker_submission": False,
+            "blocker_messages": evaluation.get("blocker_messages", []),
             "agent_summary": evaluation["agent_summary"],
         }
     else:
@@ -371,8 +560,10 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "quantity": evaluation["quantity"],
             "price": evaluation["price"],
             "notional": evaluation["notional"],
+            "blockers": evaluation.get("blockers", []),
             "shariah": evaluation["agent_summary"]["shariah"],
             "risk": evaluation["agent_summary"]["risk"],
+            "blocker_messages": evaluation.get("blocker_messages", []),
             "agent_summary": evaluation["agent_summary"],
         }
 
@@ -385,19 +576,26 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
     settings = load_settings()
     preview = request.preview
     shariah = preview.get("agent_summary", {}).get("shariah", preview.get("shariah", {}))
+    risk = preview.get("agent_summary", {}).get("risk", preview.get("risk", {}))
+    side = preview.get("side", "BUY")
     candidate = {
-        "signal": "BUY" if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
+        "signal": str(side).upper() if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
         "compliance": {
             "status": "COMPLIANT" if shariah.get("status") == "PASS" else "REJECT",
             "source": shariah.get("provider", "SHARIAH_AGENT"),
         },
         "symbol": preview.get("symbol"),
-        "side": preview.get("side", "BUY"),
+        "side": side,
         "quantity": preview.get("quantity"),
         "price": preview.get("price"),
         "notional": preview.get("notional"),
     }
-    approval = approve_candidate(candidate, approved_by_user=request.approved)
+    if preview.get("status") != "READY_FOR_APPROVAL":
+        approval = {"status": "REJECT", "reason": "preview_not_ready_for_approval", "broker_submission": False}
+    elif risk.get("status") != "PASS":
+        approval = {"status": "REJECT", "reason": "risk_gate_failed", "broker_submission": False}
+    else:
+        approval = approve_candidate(candidate, approved_by_user=request.approved)
     approval["broker_submission"] = False
     approval["paper_execution_enabled"] = settings.paper_execution_enabled
     connection = db()
@@ -454,3 +652,29 @@ def execute_paper(queue_id: int, request: PaperExecutionRequest | None = None) -
         connection.close()
     audit = add_audit_event("paper_execution", result)
     return {"execution_id": audit["id"], "created_at": audit["created_at"], **result}
+
+
+@app.post("/paper/reconcile/{queue_id}")
+def reconcile_paper(queue_id: int) -> dict:
+    connection = db()
+    try:
+        result = reconcile_submitted_paper_order(connection, queue_id)
+        portfolio_sync = None
+        if result.get("status") == "BROKER_FILLED":
+            approval = get_approval(connection, queue_id)
+            if approval is not None:
+                portfolio_sync = sync_filled_order(connection, approval)
+    finally:
+        connection.close()
+    payload = {**result, "portfolio_sync": portfolio_sync}
+    audit = add_audit_event("paper_reconciliation", payload)
+    return {"reconciliation_id": audit["id"], "created_at": audit["created_at"], **payload}
+
+
+@app.get("/portfolio")
+def portfolio() -> dict:
+    connection = db()
+    try:
+        return portfolio_snapshot_with_exposure(connection)
+    finally:
+        connection.close()

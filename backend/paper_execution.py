@@ -6,10 +6,10 @@ configured adapter. Broker submission remains opt-in through configuration.
 
 import sqlite3
 
-from approval_queue import get_approval, record_broker_submission, update_execution_status
+from approval_queue import get_approval, record_broker_reconciliation, record_broker_submission, update_execution_status
 from config import load_settings
 from moomoo_status import check_moomoo_status
-from moomoo_paper_adapter import submit_paper_order
+from moomoo_paper_adapter import reconcile_paper_order, submit_paper_order
 from trading_modes import mode_capabilities
 
 
@@ -29,13 +29,15 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": False}
 
     if approval.get("broker_submission"):
-        result = update_execution_status(
-            connection,
-            queue_id,
-            status="ALREADY_SUBMITTED",
-            message="broker_submission_already_recorded",
-        )
-        return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": True}
+        return {
+            "id": queue_id,
+            "status": "ALREADY_SUBMITTED",
+            "queue_id": queue_id,
+            "broker_submission": True,
+            "execution_status": approval.get("execution_status"),
+            "execution_message": approval.get("execution_message") or "broker_submission_already_recorded",
+            "executed_at": approval.get("executed_at"),
+        }
 
     capabilities = mode_capabilities(settings.trading_mode)
     if not capabilities["paper_execution_allowed"]:
@@ -126,4 +128,35 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
         "paper_execution_enabled": True,
         "broker_submission": True,
         "moomoo": moomoo,
+    }
+
+
+def reconcile_submitted_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
+    approval = get_approval(connection, queue_id)
+    if approval is None:
+        return {"status": "NOT_FOUND", "queue_id": queue_id, "broker_submission": False}
+
+    if not approval.get("broker_submission"):
+        return {
+            "status": "BROKER_NOT_SUBMITTED",
+            "queue_id": queue_id,
+            "broker_submission": False,
+            "reason": "approval row has no broker submission",
+        }
+
+    reconciliation = reconcile_paper_order(approval)
+    if not reconciliation.get("broker_submission"):
+        return {
+            "status": reconciliation.get("status", "BROKER_RECONCILE_ERROR"),
+            "queue_id": queue_id,
+            "broker_submission": False,
+            "adapter": reconciliation,
+        }
+
+    result = record_broker_reconciliation(connection, queue_id, reconciliation=reconciliation)
+    return {
+        **result,
+        "status": result["execution_status"],
+        "queue_id": queue_id,
+        "broker_submission": True,
     }

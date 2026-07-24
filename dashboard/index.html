@@ -375,7 +375,7 @@
       gap: 10px;
     }
 
-    .queue-list, .audit-list {
+    .queue-list, .audit-list, .paper-order-list, .portfolio-list {
       display: grid;
       gap: 8px;
       max-height: 320px;
@@ -418,6 +418,88 @@
       line-height: 1.25;
       min-width: 0;
       overflow-wrap: anywhere;
+    }
+
+    .paper-order {
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .paper-order-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .paper-order-title {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .paper-order-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .paper-order-field {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px;
+      background: var(--bg-soft);
+      overflow-wrap: anywhere;
+    }
+
+    .paper-order-field span {
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .paper-order-field strong {
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .adapter-response {
+      min-height: 76px;
+      max-height: 180px;
+      font-size: 11px;
+    }
+
+    .portfolio-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .portfolio-item {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .portfolio-row {
+      display: grid;
+      grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
     }
 
     .opportunity-controls {
@@ -513,7 +595,7 @@
         width: 100%;
       }
 
-      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls {
+      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls, .paper-order-grid, .paper-order-head, .portfolio-summary, .portfolio-row {
         grid-template-columns: 1fr;
       }
 
@@ -597,10 +679,10 @@
                 <input id="price" type="number" min="0.01" step="0.01" value="100.00">
               </label>
               <label>Position %
-                <input id="positionPct" type="number" min="0" step="0.1" value="1.0">
+                <input id="positionPct" type="number" min="0" step="0.01" value="1.00">
               </label>
               <label>Total Exposure %
-                <input id="totalExposurePct" type="number" min="0" step="0.1" value="5.0">
+                <input id="totalExposurePct" type="number" min="0" step="0.01" value="5.00">
               </label>
               <label>Loss / Trade %
                 <input id="lossPerTradePct" type="number" min="0" step="0.1" value="0.2">
@@ -689,6 +771,14 @@
               <strong id="riskStatus">-</strong>
             </div>
             <div class="summary-card">
+              <div class="stat-label">Position Exposure</div>
+              <strong id="portfolioPositionPct">-</strong>
+            </div>
+            <div class="summary-card">
+              <div class="stat-label">Total Exposure</div>
+              <strong id="portfolioTotalPct">-</strong>
+            </div>
+            <div class="summary-card">
               <div class="stat-label">Approval Result</div>
               <strong id="approvalStatus">Not approved</strong>
             </div>
@@ -748,6 +838,28 @@
 
         <section class="panel">
           <div class="panel-head">
+            <h2>Paper Orders</h2>
+            <span id="paperOrdersCount" class="badge warn">0 Orders</span>
+          </div>
+          <div id="paperOrdersList" class="paper-order-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Portfolio/Risk</h2>
+            <span id="portfolioBadge" class="badge warn">0 Positions</span>
+          </div>
+          <div class="portfolio-summary">
+            <div class="paper-order-field"><span>Cost Basis</span><strong id="portfolioCostBasis">-</strong></div>
+            <div class="paper-order-field"><span>Market Value</span><strong id="portfolioMarketValue">-</strong></div>
+            <div class="paper-order-field"><span>Unrealized P&L</span><strong id="portfolioUnrealizedPnl">-</strong></div>
+            <div class="paper-order-field"><span>Realized P&L</span><strong id="portfolioRealizedPnl">-</strong></div>
+          </div>
+          <div id="portfolioList" class="portfolio-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <h2>Audit History</h2>
             <span id="auditCount" class="badge warn">0 Events</span>
           </div>
@@ -781,6 +893,8 @@
     const previewShariah = document.querySelector("#previewShariah");
     const previewRisk = document.querySelector("#previewRisk");
     const riskStatusMetric = document.querySelector("#riskStatus");
+    const portfolioPositionPctMetric = document.querySelector("#portfolioPositionPct");
+    const portfolioTotalPctMetric = document.querySelector("#portfolioTotalPct");
     const approvalStatus = document.querySelector("#approvalStatus");
     const priceSource = document.querySelector("#priceSource");
     const historyBars = document.querySelector("#historyBars");
@@ -796,6 +910,14 @@
     const alertHistoryCount = document.querySelector("#alertHistoryCount");
     const approvalQueueList = document.querySelector("#approvalQueueList");
     const approvalQueueCount = document.querySelector("#approvalQueueCount");
+    const paperOrdersList = document.querySelector("#paperOrdersList");
+    const paperOrdersCount = document.querySelector("#paperOrdersCount");
+    const portfolioBadge = document.querySelector("#portfolioBadge");
+    const portfolioCostBasis = document.querySelector("#portfolioCostBasis");
+    const portfolioMarketValue = document.querySelector("#portfolioMarketValue");
+    const portfolioUnrealizedPnl = document.querySelector("#portfolioUnrealizedPnl");
+    const portfolioRealizedPnl = document.querySelector("#portfolioRealizedPnl");
+    const portfolioList = document.querySelector("#portfolioList");
     const auditList = document.querySelector("#auditList");
     const auditCount = document.querySelector("#auditCount");
     const opportunitySymbols = document.querySelector("#opportunitySymbols");
@@ -806,6 +928,8 @@
     const opportunityList = document.querySelector("#opportunityList");
     const opportunityBadge = document.querySelector("#opportunityBadge");
     let currentPreview = null;
+    let currentPortfolio = null;
+    let currentSystemMode = null;
     let autoScanTimer = null;
     let scanInFlight = false;
 
@@ -957,6 +1081,25 @@
       };
     }
 
+    function formatPct(value) {
+      return value == null ? "-" : `${Number(value).toFixed(2)}%`;
+    }
+
+    function selectedPositionExposurePct() {
+      const symbol = document.querySelector("#symbol").value.trim().toUpperCase();
+      const positions = currentPortfolio?.positions || [];
+      const match = positions.find((position) => position.symbol === symbol);
+      return match?.account_exposure_pct || 0;
+    }
+
+    function refreshExposureInputs() {
+      if (!currentPortfolio) {
+        return;
+      }
+      document.querySelector("#positionPct").value = Number(selectedPositionExposurePct()).toFixed(2);
+      document.querySelector("#totalExposurePct").value = Number(currentPortfolio.total_exposure_pct || 0).toFixed(2);
+    }
+
     function setTheme(theme) {
       document.documentElement.dataset.theme = theme;
       const isDark = theme === "dark";
@@ -1000,6 +1143,7 @@
       const shariahMarket = agents.shariah?.market || "-";
       const quantSignal = agents.quant?.signal || "-";
       const riskStatus = agents.risk?.status || preview.risk?.status || "-";
+      const portfolioRisk = agents.risk?.details?.portfolio || {};
       const quantBars = agents.quant?.bars ?? "-";
       const quantSource = agents.quant?.price_source || "-";
       const shariahOk = shariahStatus === "PASS";
@@ -1010,6 +1154,10 @@
       setMetric(previewShariah, shariahMarket === "-" ? shariahStatus : `${shariahStatus} / ${shariahMarket}`, shariahOk ? "ok" : "bad");
       setMetric(previewRisk, quantSignal, quantOk ? "ok" : "warn");
       setMetric(riskStatusMetric, riskStatus, riskOk ? "ok" : "bad");
+      const positionPctOk = portfolioRisk.projected_position_pct == null || portfolioRisk.projected_position_pct <= portfolioRisk.limits?.max_position_pct;
+      const totalPctOk = portfolioRisk.projected_total_exposure_pct == null || portfolioRisk.projected_total_exposure_pct <= portfolioRisk.limits?.max_total_exposure_pct;
+      setMetric(portfolioPositionPctMetric, formatPct(portfolioRisk.projected_position_pct), positionPctOk ? "ok" : "bad");
+      setMetric(portfolioTotalPctMetric, formatPct(portfolioRisk.projected_total_exposure_pct), totalPctOk ? "ok" : "bad");
       setMetric(approvalStatus, ready ? "Ready" : "Blocked", ready ? "warn" : "bad");
       setMetric(priceSource, quantSource, quantSource === "tiingo" ? "ok" : "warn");
       setMetric(historyBars, String(quantBars), Number(quantBars) >= 200 ? "ok" : "warn");
@@ -1019,6 +1167,7 @@
       approveButton.disabled = !ready;
       rejectButton.disabled = false;
       rawOutput.textContent = JSON.stringify(payload, null, 2);
+      renderCommittee(currentSystemMode || { agent_team: [], effective_paper_execution_allowed: false }, preview);
     }
 
     async function refreshStatus() {
@@ -1027,7 +1176,7 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, systemMode, paper, moomoo, approvals, audit, watchlist, alerts] = await Promise.all([
+        const [health, systemMode, paper, moomoo, approvals, audit, watchlist, alerts, portfolio] = await Promise.all([
           getJson("/health"),
           getJson("/system/mode"),
           getJson("/paper/status"),
@@ -1036,6 +1185,7 @@
           getJson("/audit"),
           getJson("/watchlist"),
           getJson("/opportunity-alerts"),
+          getJson("/portfolio"),
         ]);
 
         const connected = health.status === "ok";
@@ -1051,13 +1201,16 @@
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
         setStat(paperExecution, executionEnabled ? "Enabled" : "Locked", executionEnabled ? "warn" : "ok");
         setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
-        renderCommittee(systemMode);
+        currentSystemMode = systemMode;
+        renderCommittee(systemMode, currentPreview);
         applyWatchlistSettings(watchlist);
         renderAlertHistory(alerts);
         renderApprovalQueue(approvals);
+        renderPaperOrders(approvals);
+        renderPortfolio(portfolio);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
-        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo, watchlist }, null, 2);
+        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo, watchlist, portfolio }, null, 2);
       } catch (error) {
         setStat(apiConnection, "Disconnected", "bad");
         setStat(paperMode, "Unknown", "warn");
@@ -1091,15 +1244,31 @@
       });
     }
 
-    function renderCommittee(systemMode) {
+    function renderCommittee(systemMode, preview = null) {
       committeeList.replaceChildren();
       const executionAllowed = systemMode.effective_paper_execution_allowed === true;
       setBadge(committeeBadge, executionAllowed ? "Execution Allowed" : "Approval Mode", executionAllowed ? "warn" : "ok");
-      systemMode.agent_team.forEach((agent) => {
+      (systemMode.agent_team || []).forEach((agent) => {
         const item = document.createElement("div");
         item.className = "audit-item";
         item.innerHTML = `<span class="badge ok">${agent.name}</span><code>${agent.role}</code>`;
         committeeList.append(item);
+      });
+      const blockers = preview?.blockers || [];
+      const portfolioRisk = preview?.agent_summary?.risk?.details?.portfolio;
+      if (portfolioRisk) {
+        const exposure = document.createElement("div");
+        exposure.className = "audit-item";
+        const exposureOk = portfolioRisk.status === "PASS";
+        exposure.innerHTML = `<span class="badge ${exposureOk ? "ok" : "bad"}">Portfolio</span><code>Position ${formatPct(portfolioRisk.projected_position_pct)} / ${formatPct(portfolioRisk.limits?.max_position_pct)} | Total ${formatPct(portfolioRisk.projected_total_exposure_pct)} / ${formatPct(portfolioRisk.limits?.max_total_exposure_pct)}</code>`;
+        committeeList.append(exposure);
+      }
+      const blockerMessages = preview?.blocker_messages || [];
+      blockerMessages.filter((message) => message.blocker?.startsWith("portfolio_") || message.blocker === "risk_rejected" || message.blocker === "quant_no_buy_signal").forEach((message) => {
+        const row = document.createElement("div");
+        row.className = "audit-item";
+        row.innerHTML = `<span class="badge bad">Blocker</span><code>${message.message}</code>`;
+        committeeList.append(row);
       });
     }
 
@@ -1234,18 +1403,184 @@
         const notional = item.notional == null ? "-" : `$${Number(item.notional).toFixed(2)}`;
         const execution = item.execution_status || item.execution_environment || "PENDING";
         const canExecute = item.approval_status === "APPROVED_PAPER_READY" && item.broker_submission === false;
+        const payload = approvalPayload(item);
+        const blockers = payload.preview?.blockers || [];
+        const blockerMessages = payload.preview?.blocker_messages || [];
+        const portfolioRisk = payload.preview?.agent_summary?.risk?.details?.portfolio;
+        const exposureLine = portfolioRisk ? `<span>Projected Position ${formatPct(portfolioRisk.projected_position_pct)} | Projected Total ${formatPct(portfolioRisk.projected_total_exposure_pct)}</span>` : "";
+        const blockerLine = blockerMessages.length ? blockerMessages.map((message) => `<span>${message.message}</span>`).join("") : blockers.length ? `<span>Blockers ${blockers.join(", ")}</span>` : "";
         row.innerHTML = `
           <span class="badge ${statusClass}">${item.approval_status}</span>
           <strong>${item.symbol}</strong>
           <div class="queue-meta">
             <span>${item.side} ${item.quantity ?? "-"} @ ${item.price ?? "-"}</span>
+            ${exposureLine}
+            ${blockerLine}
             <span>${notional} · Shariah ${item.shariah_status || "-"} / ${item.shariah_market || "-"} · Quant ${item.quant_signal || "-"} · Risk ${item.risk_status || "-"}</span>
           </div>
-          <span class="badge execution-badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker On" : execution}</span>
+          <span class="badge execution-badge ${item.broker_submission ? "bad" : "ok"}">${item.broker_submission ? "Broker Submitted" : execution}</span>
           ${canExecute ? `<button class="secondary queue-action" type="button" data-execute-id="${item.id}">Execute Paper</button>` : ""}
         `;
         approvalQueueList.append(row);
       });
+    }
+
+    function approvalPayload(item) {
+      if (!item.payload) {
+        return {};
+      }
+      try {
+        return JSON.parse(item.payload);
+      } catch {
+        return { raw_payload: item.payload };
+      }
+    }
+
+    function brokerResponseFor(item) {
+      const payload = approvalPayload(item);
+      return payload.broker_submission || payload.broker_response || null;
+    }
+
+    function reconciliationFor(item) {
+      const payload = approvalPayload(item);
+      return payload.broker_reconciliation || null;
+    }
+
+    function renderPaperOrders(items) {
+      const submitted = (items || []).filter((item) => item.broker_submission || brokerResponseFor(item));
+      paperOrdersList.replaceChildren();
+      setBadge(paperOrdersCount, `${submitted.length} ${submitted.length === 1 ? "Order" : "Orders"}`, submitted.length ? "ok" : "warn");
+      if (!submitted.length) {
+        const empty = document.createElement("div");
+        empty.className = "paper-order";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><div class=\"queue-meta\">No broker-submitted paper orders yet.</div>";
+        paperOrdersList.append(empty);
+        return;
+      }
+      submitted.slice(0, 20).forEach((item) => {
+        const broker = brokerResponseFor(item) || {};
+        const reconciliation = reconciliationFor(item) || {};
+        const row = document.createElement("div");
+        row.className = "paper-order";
+        const status = reconciliation.status || broker.status || item.execution_status || "BROKER_SUBMITTED";
+        const brokerOrderId = broker.broker_order_id || item.execution_message || "-";
+        const fillStatus = reconciliation.order_status || broker.order_status || broker.fill_status || status;
+        const environment = reconciliation.environment || broker.environment || item.execution_environment || "-";
+        const accountSuffix = reconciliation.account_suffix || broker.account_suffix || "-";
+        const accountType = reconciliation.account_type || broker.account_type || "-";
+        const executedAt = reconciliation.reconciled_at || broker.submitted_at || item.executed_at || "-";
+        const code = reconciliation.broker_code || broker.broker_code || item.symbol || "-";
+        const state = status === "BROKER_REJECTED" || status === "BROKER_EXPIRED" || status === "BROKER_STATUS_UNKNOWN" ? "bad" : status === "BROKER_SUBMITTED" ? "warn" : "ok";
+        const adapterPayload = {
+          broker_submission: broker,
+          latest_reconciliation: reconciliation,
+        };
+        row.innerHTML = `
+          <div class="paper-order-head">
+            <div class="paper-order-title">
+              <strong>${item.symbol} ${item.side} ${item.quantity ?? "-"} @ ${item.price ?? "-"}</strong>
+              <span class="queue-meta">${code} | Queue #${item.id} | ${formatLocalTime(item.created_at)}</span>
+            </div>
+            <span class="badge ${state}">${status}</span>
+          </div>
+          <div class="paper-order-grid">
+            <div class="paper-order-field"><span>Broker Order ID</span><strong>${brokerOrderId}</strong></div>
+            <div class="paper-order-field"><span>Submitted / Fill Status</span><strong>${fillStatus}</strong></div>
+            <div class="paper-order-field"><span>Environment</span><strong>${environment}</strong></div>
+            <div class="paper-order-field"><span>Account</span><strong>${accountType} ${accountSuffix}</strong></div>
+            <div class="paper-order-field"><span>Executed At</span><strong>${formatLocalTime(executedAt)}</strong></div>
+            <div class="paper-order-field"><span>Adapter</span><strong>${broker.adapter || "-"}</strong></div>
+          </div>
+          <button class="secondary queue-action" type="button" data-reconcile-id="${item.id}">Refresh Status</button>
+          <pre class="adapter-response"></pre>
+        `;
+        row.querySelector(".adapter-response").textContent = JSON.stringify(adapterPayload, null, 2);
+        paperOrdersList.append(row);
+      });
+    }
+
+    function formatMoney(value) {
+      return value == null ? "-" : `$${Number(value).toFixed(2)}`;
+    }
+
+    function formatNumber(value) {
+      return value == null ? "-" : Number(value).toFixed(2).replace(/\.00$/, "");
+    }
+
+    function renderPortfolio(payload) {
+      currentPortfolio = payload;
+      refreshExposureInputs();
+      const positions = payload.positions || [];
+      const fills = payload.fills || [];
+      portfolioList.replaceChildren();
+      const valued = payload.valuation_status === "VALUED" || payload.valuation_status === "PARTIAL";
+      setBadge(portfolioBadge, valued ? payload.valuation_status : `${positions.length} ${positions.length === 1 ? "Position" : "Positions"}`, positions.length ? valued ? "ok" : "warn" : "warn");
+      portfolioCostBasis.textContent = formatMoney(payload.total_cost_basis);
+      portfolioMarketValue.textContent = formatMoney(payload.market_value);
+      portfolioUnrealizedPnl.textContent = formatMoney(payload.unrealized_pnl);
+      portfolioUnrealizedPnl.className = Number(payload.unrealized_pnl || 0) >= 0 ? "ok" : "bad";
+      portfolioRealizedPnl.textContent = formatMoney(payload.total_realized_pnl);
+      portfolioRealizedPnl.className = Number(payload.total_realized_pnl || 0) >= 0 ? "ok" : "bad";
+
+      if (!positions.length && !fills.length) {
+        const empty = document.createElement("div");
+        empty.className = "portfolio-item";
+        empty.innerHTML = "<span class=\"badge warn\">Empty</span><div class=\"queue-meta\">No filled paper orders have been synced into the portfolio yet.</div>";
+        portfolioList.append(empty);
+        return;
+      }
+
+      positions.forEach((position) => {
+        const row = document.createElement("div");
+        row.className = "portfolio-item";
+        row.innerHTML = `
+          <div class="portfolio-row">
+            <span class="badge ok">${position.symbol}</span>
+            <div class="queue-meta">
+              <strong>${formatNumber(position.quantity)} shares @ ${formatMoney(position.average_cost)}</strong>
+              <span>Last ${formatMoney(position.latest_price)} | Value ${formatMoney(position.market_value)} | Unrealized ${formatMoney(position.unrealized_pnl)} (${position.unrealized_pnl_pct == null ? "-" : `${Number(position.unrealized_pnl_pct).toFixed(2)}%`})</span>
+              <span>Cost ${formatMoney(position.cost_basis)} | Account Exposure ${formatPct(position.account_exposure_pct)} | Portfolio Weight ${formatPct(position.exposure_weight_pct)} | Source ${position.price_source || "-"} ${position.price_date || ""}</span>
+              <span>Realized P&L ${formatMoney(position.realized_pnl)} | Account ${position.account_type || "-"} ${position.account_suffix || "-"}</span>
+              <span>Updated ${formatLocalTime(position.updated_at)}</span>
+            </div>
+          </div>
+        `;
+        portfolioList.append(row);
+      });
+
+      fills.slice(0, 5).forEach((fill) => {
+        const row = document.createElement("div");
+        row.className = "portfolio-item";
+        row.innerHTML = `
+          <div class="portfolio-row">
+            <span class="badge warn">Fill</span>
+            <div class="queue-meta">
+              <strong>${fill.symbol} ${fill.side} ${formatNumber(fill.quantity)} @ ${formatMoney(fill.avg_price)}</strong>
+              <span>Order ${fill.broker_order_id} | Queue #${fill.queue_id} | ${formatMoney(fill.notional)}</span>
+              <span>${formatLocalTime(fill.filled_at)}</span>
+            </div>
+          </div>
+        `;
+        portfolioList.append(row);
+      });
+    }
+
+    async function reconcilePaperOrder(queueId) {
+      setBadge(responseBadge, "Reconciling", "warn");
+      rawOutput.textContent = `Refreshing broker status for queue #${queueId}...`;
+      try {
+        const payload = await postJson(`/paper/reconcile/${queueId}`, {});
+        setBadge(responseBadge, "Reconciled", payload.broker_submission ? "ok" : "warn");
+        rawOutput.textContent = JSON.stringify(payload, null, 2);
+        const approvals = await getJson("/approvals");
+        renderApprovalQueue(approvals);
+        renderPaperOrders(approvals);
+        renderPortfolio(await getJson("/portfolio"));
+        renderAudit(await getJson("/audit"));
+      } catch (error) {
+        setBadge(responseBadge, "Error", "bad");
+        rawOutput.textContent = String(error);
+      }
     }
 
     async function scanOpportunities(options = {}) {
@@ -1305,7 +1640,9 @@
         const lockedOrRejected = payload.status === "EXECUTION_LOCKED" || payload.status === "CONFIRMATION_REQUIRED";
         setBadge(responseBadge, lockedOrRejected ? "Locked" : "Execution", payload.broker_submission ? "bad" : "warn");
         rawOutput.textContent = JSON.stringify(payload, null, 2);
-        renderApprovalQueue(await getJson("/approvals"));
+        const approvals = await getJson("/approvals");
+        renderApprovalQueue(approvals);
+        renderPaperOrders(approvals);
         renderAudit(await getJson("/audit"));
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
@@ -1356,7 +1693,9 @@
         setBadge(approvalBadge, approved ? "Approved" : "Rejected", approved ? "ok" : "warn");
         setBadge(responseBadge, "Approval", approved ? "ok" : "warn");
         rawOutput.textContent = JSON.stringify(payload, null, 2);
-        renderApprovalQueue(await getJson("/approvals"));
+        const approvals = await getJson("/approvals");
+        renderApprovalQueue(approvals);
+        renderPaperOrders(approvals);
         renderAudit(await getJson("/audit"));
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
@@ -1372,6 +1711,8 @@
       setMetric(previewShariah, "-");
       setMetric(previewRisk, "-");
       setMetric(riskStatusMetric, "-");
+      setMetric(portfolioPositionPctMetric, "-");
+      setMetric(portfolioTotalPctMetric, "-");
       setMetric(approvalStatus, "Not approved", "warn");
       setMetric(priceSource, "-");
       setMetric(historyBars, "-");
@@ -1381,6 +1722,7 @@
       approveButton.disabled = true;
       rejectButton.disabled = true;
       rawOutput.textContent = "Refresh status or create a preview.";
+      refreshExposureInputs();
     }
 
     const savedTheme = localStorage.getItem("amanah-theme");
@@ -1390,6 +1732,7 @@
     });
     refreshButton.addEventListener("click", refreshStatus);
     previewForm.addEventListener("submit", createPreview);
+    document.querySelector("#symbol").addEventListener("input", refreshExposureInputs);
     resetButton.addEventListener("click", resetTicket);
     saveWatchlistButton.addEventListener("click", async () => {
       setBadge(responseBadge, "Saving", "warn");
@@ -1437,6 +1780,12 @@
       const button = event.target.closest("[data-execute-id]");
       if (button) {
         executeQueuedPaper(button.dataset.executeId);
+      }
+    });
+    paperOrdersList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-reconcile-id]");
+      if (button) {
+        reconcilePaperOrder(button.dataset.reconcileId);
       }
     });
     refreshStatus();

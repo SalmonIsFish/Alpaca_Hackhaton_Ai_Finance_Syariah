@@ -39,6 +39,7 @@ class Settings:
     moomoo_port: int
     paper_execution_enabled: bool
     paper_execution_adapter: str
+    paper_account_equity: float
 
 
 def load_settings() -> Settings:
@@ -55,6 +56,12 @@ def load_settings() -> Settings:
     except ValueError as exc:
         raise ValueError("MOOMOO_PORT must be an integer") from exc
     paper_execution_enabled = os.getenv("PAPER_EXECUTION_ENABLED", "false").strip().lower() == "true"
+    try:
+        paper_account_equity = float(os.getenv("PAPER_ACCOUNT_EQUITY", "10000"))
+    except ValueError as exc:
+        raise ValueError("PAPER_ACCOUNT_EQUITY must be numeric") from exc
+    if paper_account_equity <= 0:
+        raise ValueError("PAPER_ACCOUNT_EQUITY must be greater than zero")
 
     return Settings(
         tiingo_api_token=os.getenv("TIINGO_API_TOKEN") or None,
@@ -68,4 +75,5 @@ def load_settings() -> Settings:
         moomoo_port=port,
         paper_execution_enabled=paper_execution_enabled,
         paper_execution_adapter=os.getenv("PAPER_EXECUTION_ADAPTER", "disabled").strip().lower(),
+        paper_account_equity=paper_account_equity,
     )

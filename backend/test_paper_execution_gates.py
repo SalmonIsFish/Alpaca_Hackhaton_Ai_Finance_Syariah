@@ -6,7 +6,7 @@ import sqlite3
 
 import paper_execution
 from approval_queue import get_approval, record_approval
-from paper_execution import execute_paper_order
+from paper_execution import execute_paper_order, reconcile_submitted_paper_order
 
 
 READY_MOOMOO = {
@@ -67,6 +67,7 @@ def set_execution_env(*, trading_mode: str = "approval", enabled: bool = True, a
 def main() -> None:
     original_env = {key: os.environ.get(key) for key in ["TRADING_MODE", "PAPER_EXECUTION_ENABLED", "PAPER_EXECUTION_ADAPTER"]}
     original_moomoo_status = paper_execution.check_moomoo_status
+    original_reconcile = paper_execution.reconcile_paper_order
     try:
         connection = make_connection()
         paper_execution.check_moomoo_status = lambda: READY_MOOMOO
@@ -120,11 +121,32 @@ def main() -> None:
         payload = json.loads(submitted_row["payload"])
         assert payload["broker_submission"]["adapter"] == "fake"
 
+        paper_execution.reconcile_paper_order = lambda approval: {
+            "status": "BROKER_FILLED",
+            "adapter": "fake",
+            "broker_submission": True,
+            "broker_order_id": f"FAKE-PAPER-{submitted_id}",
+            "order_status": "FILLED_ALL",
+            "dealt_qty": 1.0,
+            "dealt_avg_price": 333.7,
+            "reconciled_at": "2026-07-24T00:00:00+00:00",
+        }
+        reconciliation_result = reconcile_submitted_paper_order(connection, submitted_id)
+        assert reconciliation_result["status"] == "BROKER_FILLED"
+        assert reconciliation_result["broker_submission"] is True
+
+        reconciled_row = get_approval(connection, submitted_id)
+        assert reconciled_row["execution_status"] == "BROKER_FILLED"
+        reconciled_payload = json.loads(reconciled_row["payload"])
+        assert reconciled_payload["broker_reconciliation"]["order_status"] == "FILLED_ALL"
+        assert len(reconciled_payload["broker_reconciliation_history"]) == 1
+
         duplicate_result = execute_paper_order(connection, submitted_id)
         assert duplicate_result["status"] == "ALREADY_SUBMITTED"
         assert duplicate_result["broker_submission"] is True
     finally:
         paper_execution.check_moomoo_status = original_moomoo_status
+        paper_execution.reconcile_paper_order = original_reconcile
         for key, value in original_env.items():
             if value is None:
                 os.environ.pop(key, None)

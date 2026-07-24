@@ -61,6 +61,8 @@ def main() -> None:
     assert "/paper/preview" in home_payload["routes"]
     assert "/paper/approval" in home_payload["routes"]
     assert "/paper/execute/{queue_id}" in home_payload["routes"]
+    assert "/paper/reconcile/{queue_id}" in home_payload["routes"]
+    assert "/portfolio" in home_payload["routes"]
     assert "/approvals" in home_payload["routes"]
 
     health = client.get("/health")
@@ -96,6 +98,17 @@ def main() -> None:
     assert paper_payload["broker_submission"] is False
     assert detect_market("0001") == "MY"
     assert detect_market("AAPL") == "US"
+
+    portfolio = client.get("/portfolio")
+    assert portfolio.status_code == 200, portfolio.text
+    portfolio_payload = portfolio.json()
+    assert portfolio_payload["status"] == "OK"
+    assert portfolio_payload["valuation_status"] == "EMPTY"
+    assert portfolio_payload["position_count"] == 0
+    assert portfolio_payload["fill_count"] == 0
+    assert portfolio_payload["positions"] == []
+    assert portfolio_payload["fills"] == []
+    assert portfolio_payload["market_value"] is None
 
     moomoo = client.get("/moomoo/status")
     assert moomoo.status_code == 200, moomoo.text

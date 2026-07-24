@@ -24,11 +24,15 @@ Then open:
 C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
 ```
 
-First next build task:
+Recently completed build task:
 
-1. Rename queue label `Broker On` to `Broker Submitted`.
-2. Add a clearer Paper Orders section with broker order id, submitted/fill status, environment, account suffix, execution timestamp, and raw adapter response.
-3. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
+1. Renamed queue label `Broker On` to `Broker Submitted`.
+2. Added a clearer Paper Orders section with broker order id, submitted/fill status, environment, account suffix, execution timestamp, and raw adapter response.
+3. Ran a controlled Moomoo paper execution test through the locked `/paper/execute/{queue_id}` path.
+4. Added paper order reconciliation with `POST /paper/reconcile/{queue_id}` and dashboard `Refresh Status`.
+5. Added local portfolio/exposure tracking from filled paper orders with `GET /portfolio`.
+6. Added mark-to-market portfolio valuation using Tiingo/cache prices with no fixture fallback.
+7. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
 
 ## Current State
 
@@ -66,9 +70,15 @@ Working components:
   - `PAPER_EXECUTION_ENABLED=true` required
   - Shariah PASS required
   - Risk PASS required
-  - active SIMULATE CASH account required
+  - active market-compatible SIMULATE account required
   - broker submission recorded in queue and audit when adapter submits
+  - read-only reconciliation records submitted/filled/cancelled/rejected/expired status transitions
 - Real Moomoo adapter is available with `PAPER_EXECUTION_ADAPTER=moomoo`, currently limited to US equity paper orders such as `AAPL` -> `US.AAPL`.
+- Portfolio ledger stores filled paper orders as local positions:
+  - positions include quantity, average cost, cost basis, realized P&L placeholder, account suffix/type, and update time
+  - dashboard has a Portfolio/Risk section
+  - market value, unrealized P&L, and exposure are priced from Tiingo/cache when available
+  - valuation reports `DATA_ERROR` instead of using fixture prices when market data is unavailable
 
 ## How To Continue
 
@@ -145,23 +155,13 @@ Expected good signs:
 
 Next recommended build step:
 
-1. Add watchlist persistence and alert history:
-   - persist watchlist symbols and alert threshold in SQLite
-   - remember the latest opportunity scan results
-   - record alert events when symbols move between `NOT_READY`, `NEAR_BREAKOUT`, `ALERT`, and `READY`
-   - add `GET /watchlist`, `POST /watchlist`, and `GET /opportunity-alerts`
-   - dashboard should load saved watchlist settings on refresh
-   - dashboard should show recent alert history
+1. Tune portfolio/risk policy:
+   - set `PAPER_ACCOUNT_EQUITY` to the intended paper account risk base
+   - decide whether same-symbol add-ons should always block or only block above the 5% position ceiling
+   - consider per-symbol overrides for highly liquid names if needed
+   - keep pricing read-only and order placement behind the existing gates
 
-2. After watchlist persistence is reliable, run one controlled real Moomoo paper execution test:
-   - keep Moomoo OpenD open and verify `paper_account_ready`
-   - set `PAPER_EXECUTION_ENABLED=true`
-   - set `PAPER_EXECUTION_ADAPTER=moomoo`
-   - use a very small US paper order candidate
-   - submit only through the dashboard `/paper/execute/{queue_id}` gate path
-   - confirm returned order id/status is recorded in queue and audit
-
-3. After paper execution works, add market/investment-firm features:
+2. After portfolio/risk limits are reliable, add market/investment-firm features:
    - watchlist
    - opportunities page
    - stock profile page
@@ -173,11 +173,55 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
 
 ## Latest Operator Notes
 
+- Portfolio-derived risk limits were added on July 25, 2026:
+  - `PAPER_ACCOUNT_EQUITY` defaults to `10000` and is used as the denominator for position and total exposure percentages.
+  - `GET /portfolio` now returns account exposure percentages and risk limits.
+  - `/agent/evaluate` and `/paper/preview` add a portfolio risk overlay using market value when available, otherwise cost basis.
+  - approvals are blocked for projected position exposure above 5%, projected total exposure above 25%, or same-symbol buy add-ons.
+  - Dashboard order ticket exposure fields are pre-filled from current portfolio exposure.
+  - Investment Committee and Approval Queue show portfolio exposure blockers.
+- Risk usability and reduce-position handling were added on July 25, 2026:
+  - previews now include `blocker_messages` with readable explanations for quant and portfolio blockers.
+  - SELL previews are reduce-only and can become `READY_FOR_APPROVAL` when a local position exists and the sell quantity does not exceed local quantity.
+  - full-position SELL projections now reduce position and total exposure to zero.
+  - Dashboard exposure inputs accept two decimal places such as `3.22`.
+  - `CLAUDE.md` was added as the Claude Code handoff file.
+- Mark-to-market portfolio valuation was added on July 25, 2026:
+  - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
+  - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.
+  - Current AAPL valuation from local check: latest close `321.66`, source `tiingo_cache_after_error`, price date `2026-07-23`, market value `321.66`, unrealized P&L `-0.20`.
+- Portfolio/exposure tracking was added on July 24, 2026:
+  - `GET /portfolio` returns positions, fills, total cost basis, realized P&L, and valuation placeholders.
+  - Queue id `54` was synced into the local portfolio ledger.
+  - Position: `AAPL`, quantity `1.0`, average cost `321.86`, cost basis `321.86`, account MARGIN ending `1740`.
+  - Portfolio sync audit event id: `355`.
+- Paper order reconciliation succeeded on July 24, 2026:
+  - Queue id: `54`
+  - Broker order id: `3129776`
+  - Reconciled status: `BROKER_FILLED`
+  - Moomoo order status: `FILLED_ALL`
+  - Dealt quantity: `1.0`
+  - Dealt average price: `321.86`
+  - Account: MARGIN ending `1740`
+  - Audit event id: `354`
+  - The queue payload now stores `broker_reconciliation` and `broker_reconciliation_history`.
+- Controlled Moomoo paper execution succeeded again on July 24, 2026:
+  - Queue id: `54`
+  - Broker order id: `3129776`
+  - Broker status: `BROKER_SUBMITTED`
+  - Broker order status: `SUBMITTING`
+  - Environment: `SIMULATE`
+  - Account: MARGIN ending `1740`
+  - Symbol/code: `AAPL` / `US.AAPL`
+  - Quantity/price: `1` @ `333.74`
+  - Audit event id: `353`
+  - The queue payload contains the raw `broker_submission` adapter response.
+- Dashboard now has a Paper Orders panel that should show this order after Refresh.
 - Controlled Moomoo paper execution succeeded on July 22, 2026:
   - Dashboard produced an `APPROVED_PAPER_READY` AAPL queue item.
   - `Execute Paper` submitted to Moomoo paper/simulate.
   - Moomoo Papertrade notification reported the order was filled.
-  - Queue label currently shows `Broker On`; rename this to `Submitted` or `Broker Submitted` for clarity.
+  - Queue label now shows `Broker Submitted` for broker-submitted rows.
 - Adapter finding from the test:
   - Moomoo returned a US-compatible SIMULATE MARGIN account for `US.AAPL`.
   - Do not require SIMULATE account type to be `CASH`; require active `SIMULATE` and market-compatible account selection.

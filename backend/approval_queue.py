@@ -223,3 +223,45 @@ def record_broker_submission(connection: sqlite3.Connection, approval_id: int, *
         "executed_at": executed_at,
         "broker_response": broker_response,
     }
+
+
+def record_broker_reconciliation(connection: sqlite3.Connection, approval_id: int, *, reconciliation: dict) -> dict:
+    ensure_approval_queue(connection)
+    reconciled_at = reconciliation.get("reconciled_at") or datetime.now(timezone.utc).isoformat()
+    row = connection.execute("SELECT payload FROM approval_queue WHERE id = ?", (approval_id,)).fetchone()
+    payload = {}
+    if row is not None:
+        try:
+            payload = json.loads(row["payload"])
+        except (TypeError, json.JSONDecodeError):
+            payload = {"raw_payload": row["payload"]}
+
+    history = payload.get("broker_reconciliation_history")
+    if not isinstance(history, list):
+        history = []
+    history.append(reconciliation)
+    payload["broker_reconciliation"] = reconciliation
+    payload["broker_reconciliation_history"] = history[-50:]
+
+    status = reconciliation.get("status", "BROKER_STATUS_UNKNOWN")
+    message = reconciliation.get("broker_order_id") or reconciliation.get("reason") or reconciliation.get("order_status") or "paper order reconciled"
+    connection.execute(
+        """
+        UPDATE approval_queue
+        SET execution_status = ?,
+            execution_message = ?,
+            executed_at = ?,
+            payload = ?
+        WHERE id = ?
+        """,
+        (status, message, reconciled_at, json.dumps(payload, sort_keys=True), approval_id),
+    )
+    connection.commit()
+    return {
+        "id": approval_id,
+        "broker_submission": True,
+        "execution_status": status,
+        "execution_message": message,
+        "executed_at": reconciled_at,
+        "broker_reconciliation": reconciliation,
+    }

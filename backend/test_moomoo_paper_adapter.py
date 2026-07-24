@@ -1,6 +1,7 @@
 """Verify the real Moomoo adapter path without connecting to OpenD."""
 
 import os
+import json
 
 import moomoo_paper_adapter
 
@@ -34,6 +35,26 @@ class FakeTradeContext:
     def place_order(self, **kwargs):
         self.place_order_calls.append(kwargs)
         return 0, [{"order_id": "MOOMOO-ORDER-1", "order_status": "SUBMITTING"}]
+
+    def order_list_query(self, **kwargs):
+        return 0, [
+            {
+                "code": "US.AAPL",
+                "trd_side": "BUY",
+                "order_status": "FILLED_ALL",
+                "order_id": "MOOMOO-ORDER-1",
+                "qty": 3.0,
+                "price": 195.5,
+                "create_time": "2026-07-24 13:20:00",
+                "updated_time": "2026-07-24 13:22:00",
+                "dealt_qty": 3.0,
+                "dealt_avg_price": 195.45,
+                "last_err_msg": "",
+            }
+        ]
+
+    def history_order_list_query(self, **kwargs):
+        return 0, []
 
     def close(self):
         self.closed = True
@@ -106,6 +127,34 @@ def main() -> None:
         )
         assert unsupported["status"] == "UNSUPPORTED_MARKET"
         assert unsupported["broker_submission"] is False
+
+        reconciliation = moomoo_paper_adapter.reconcile_paper_order(
+            {
+                "id": 42,
+                "symbol": "AAPL",
+                "side": "BUY",
+                "quantity": 3,
+                "price": 195.5,
+                "shariah_market": "US",
+                "broker_submission": True,
+                "payload": json.dumps(
+                    {
+                        "broker_submission": {
+                            "adapter": "moomoo",
+                            "broker_order_id": "MOOMOO-ORDER-1",
+                            "broker_code": "US.AAPL",
+                            "environment": "SIMULATE",
+                        }
+                    }
+                ),
+            }
+        )
+        assert reconciliation["status"] == "BROKER_FILLED"
+        assert reconciliation["broker_submission"] is True
+        assert reconciliation["broker_order_id"] == "MOOMOO-ORDER-1"
+        assert reconciliation["order_status"] == "FILLED_ALL"
+        assert reconciliation["dealt_qty"] == 3.0
+        assert reconciliation["dealt_avg_price"] == 195.45
     finally:
         moomoo_paper_adapter.load_moomoo_sdk = original_loader
         if original_env is None:

@@ -1,5 +1,6 @@
 """Paper execution adapter boundary for Moomoo submissions."""
 
+import json
 from datetime import datetime, timezone
 
 from config import load_settings
@@ -20,6 +21,30 @@ def submit_paper_order(approval: dict, moomoo: dict) -> dict:
         "adapter": adapter,
         "broker_submission": False,
         "reason": "PAPER_EXECUTION_ADAPTER must be fake or moomoo to submit paper orders",
+    }
+
+
+def reconcile_paper_order(approval: dict) -> dict:
+    settings = load_settings()
+    broker_submission = broker_submission_from_approval(approval)
+    if not broker_submission:
+        return {
+            "status": "BROKER_NOT_SUBMITTED",
+            "adapter": settings.paper_execution_adapter,
+            "broker_submission": False,
+            "reason": "approval row has no broker submission",
+        }
+
+    adapter = broker_submission.get("adapter") or settings.paper_execution_adapter
+    if adapter == "fake":
+        return fake_reconcile_paper_order(approval=approval, broker_submission=broker_submission)
+    if adapter == "moomoo":
+        return reconcile_moomoo_paper_order(approval=approval, broker_submission=broker_submission)
+    return {
+        "status": "ADAPTER_NOT_CONFIGURED",
+        "adapter": adapter,
+        "broker_submission": bool(approval.get("broker_submission")),
+        "reason": "submitted order adapter is not supported for reconciliation",
     }
 
 
@@ -155,6 +180,118 @@ def submit_moomoo_paper_order(*, approval: dict) -> dict:
         context.close()
 
 
+def reconcile_moomoo_paper_order(*, approval: dict, broker_submission: dict) -> dict:
+    settings = load_settings()
+    market = (approval.get("shariah_market") or "").upper()
+    if market not in SUPPORTED_REAL_MARKETS:
+        return {
+            "status": "UNSUPPORTED_MARKET",
+            "adapter": "moomoo",
+            "broker_submission": True,
+            "reason": f"paper reconciliation currently supports {', '.join(sorted(SUPPORTED_REAL_MARKETS))} only",
+        }
+
+    broker_order_id = broker_submission.get("broker_order_id")
+    code = broker_submission.get("broker_code") or normalize_order_code(approval)
+    if not broker_order_id:
+        return {"status": "BROKER_ORDER_ID_MISSING", "adapter": "moomoo", "broker_submission": True, "reason": "broker_order_id_missing"}
+    if not code:
+        return {"status": "INVALID_SYMBOL", "adapter": "moomoo", "broker_submission": True, "reason": "symbol_required"}
+
+    try:
+        sdk = load_moomoo_sdk()
+    except ModuleNotFoundError:
+        return {"status": "SDK_NOT_INSTALLED", "adapter": "moomoo", "broker_submission": True, "reason": "moomoo_sdk_missing"}
+    except Exception as exc:
+        return {"status": "SDK_UNAVAILABLE", "adapter": "moomoo", "broker_submission": True, "reason": type(exc).__name__}
+
+    trd_market = market_to_trd_market(sdk, market)
+    account_context = sdk["OpenSecTradeContext"](filter_trdmarket=trd_market, host=settings.moomoo_host, port=settings.moomoo_port)
+    try:
+        ret, accounts = account_context.get_acc_list()
+        if ret != sdk["RET_OK"]:
+            return {"status": "MOOMOO_ACCOUNT_QUERY_FAILED", "adapter": "moomoo", "broker_submission": True, "reason": str(accounts)}
+        account = find_active_simulate_account(accounts)
+        if account is None:
+            return {"status": "MOOMOO_PAPER_ACCOUNT_MISSING", "adapter": "moomoo", "broker_submission": True, "reason": "active_simulate_account_not_found"}
+        account_id = int(account["acc_id"])
+        account_type = str(account.get("acc_type", "UNKNOWN"))
+    except Exception as exc:
+        return {"status": "BROKER_RECONCILE_ERROR", "adapter": "moomoo", "broker_submission": True, "reason": type(exc).__name__}
+    finally:
+        account_context.close()
+
+    context = sdk["OpenSecTradeContext"](filter_trdmarket=trd_market, host=settings.moomoo_host, port=settings.moomoo_port)
+    try:
+        ret, order_data = context.order_list_query(
+            order_id=str(broker_order_id),
+            code=code,
+            trd_env=sdk["TrdEnv"].SIMULATE,
+            acc_id=account_id,
+            refresh_cache=True,
+            order_market=trd_market,
+        )
+        if ret != sdk["RET_OK"]:
+            return {"status": "BROKER_RECONCILE_ERROR", "adapter": "moomoo", "broker_submission": True, "reason": str(order_data)}
+
+        row = find_order_row(order_data, broker_order_id)
+        source = "open_orders"
+        if row is None:
+            ret, history_data = context.history_order_list_query(
+                code=code,
+                trd_env=sdk["TrdEnv"].SIMULATE,
+                acc_id=account_id,
+                order_market=trd_market,
+            )
+            if ret != sdk["RET_OK"]:
+                return {"status": "BROKER_RECONCILE_ERROR", "adapter": "moomoo", "broker_submission": True, "reason": str(history_data)}
+            row = find_order_row(history_data, broker_order_id)
+            source = "history_orders"
+
+        reconciled_at = datetime.now(timezone.utc).isoformat()
+        if row is None:
+            return {
+                "status": "BROKER_ORDER_NOT_FOUND",
+                "adapter": "moomoo",
+                "broker_submission": True,
+                "broker_order_id": str(broker_order_id),
+                "broker_code": code,
+                "environment": "SIMULATE",
+                "account_type": account_type,
+                "account_suffix": str(account_id)[-4:],
+                "reconciled_at": reconciled_at,
+                "reason": "order not found in open or history order lists",
+            }
+
+        order_status = str(row.get("order_status") or "UNKNOWN")
+        return {
+            "status": lifecycle_status(order_status),
+            "adapter": "moomoo",
+            "broker_submission": True,
+            "broker_order_id": str(broker_order_id),
+            "broker_code": row.get("code") or code,
+            "source": source,
+            "order_status": order_status,
+            "side": row.get("trd_side") or approval.get("side"),
+            "quantity": numeric_or_original(row.get("qty")),
+            "price": numeric_or_original(row.get("price")),
+            "dealt_qty": numeric_or_original(row.get("dealt_qty")),
+            "dealt_avg_price": numeric_or_original(row.get("dealt_avg_price")),
+            "last_err_msg": row.get("last_err_msg"),
+            "created_at_broker": row.get("create_time"),
+            "updated_at_broker": row.get("updated_time"),
+            "environment": "SIMULATE",
+            "account_type": account_type,
+            "account_suffix": str(account_id)[-4:],
+            "reconciled_at": reconciled_at,
+            "raw_order": row,
+        }
+    except Exception as exc:
+        return {"status": "BROKER_RECONCILE_ERROR", "adapter": "moomoo", "broker_submission": True, "reason": type(exc).__name__}
+    finally:
+        context.close()
+
+
 def fake_submit_paper_order(*, approval: dict, moomoo: dict) -> dict:
     submitted_at = datetime.now(timezone.utc).isoformat()
     return {
@@ -170,6 +307,23 @@ def fake_submit_paper_order(*, approval: dict, moomoo: dict) -> dict:
         "environment": moomoo.get("environment", "SIMULATE"),
         "account_type": moomoo.get("account_type", "CASH"),
         "account_suffix": moomoo.get("account_suffix"),
+    }
+
+
+def fake_reconcile_paper_order(*, approval: dict, broker_submission: dict) -> dict:
+    reconciled_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "status": "BROKER_SUBMITTED",
+        "adapter": "fake",
+        "broker_submission": True,
+        "broker_order_id": broker_submission.get("broker_order_id") or f"FAKE-PAPER-{approval['id']}",
+        "broker_code": broker_submission.get("broker_code") or approval.get("symbol"),
+        "order_status": broker_submission.get("order_status", "SUBMITTED"),
+        "environment": broker_submission.get("environment", "SIMULATE"),
+        "account_type": broker_submission.get("account_type"),
+        "account_suffix": broker_submission.get("account_suffix"),
+        "reconciled_at": reconciled_at,
+        "raw_order": broker_submission,
     }
 
 
@@ -205,6 +359,14 @@ def rows_from_table(table) -> list[dict]:
     return []
 
 
+def find_order_row(table, broker_order_id: str | int) -> dict | None:
+    target = str(broker_order_id)
+    for row in rows_from_table(table):
+        if str(row.get("order_id") or row.get("orderID") or "") == target:
+            return row
+    return None
+
+
 def find_active_simulate_account(accounts) -> dict | None:
     for row in rows_from_table(accounts):
         if row.get("trd_env") == "SIMULATE" and row.get("acc_status") == "ACTIVE":
@@ -225,3 +387,45 @@ def extract_first_value(data, *columns: str) -> str | None:
             if value not in {None, ""}:
                 return str(value)
     return None
+
+
+def broker_submission_from_approval(approval: dict) -> dict | None:
+    payload = approval.get("payload")
+    parsed = {}
+    if isinstance(payload, str):
+        try:
+            parsed = json.loads(payload)
+        except Exception:
+            parsed = {}
+    elif isinstance(payload, dict):
+        parsed = payload
+    broker_submission = parsed.get("broker_submission")
+    if isinstance(broker_submission, dict):
+        return broker_submission
+    return None
+
+
+def lifecycle_status(order_status: str) -> str:
+    normalized = order_status.strip().upper()
+    if normalized in {"FILLED_ALL", "FILLED ALL", "FILLED"}:
+        return "BROKER_FILLED"
+    if normalized in {"FILLED_PART", "FILLED PART", "PARTIAL_FILLED", "PARTIAL FILLED"}:
+        return "BROKER_PARTIAL_FILL"
+    if normalized in {"CANCELLED_ALL", "CANCELLED ALL", "CANCELLED_PART", "CANCELLED PART", "FILL_CANCELLED", "FILL CANCELLED"}:
+        return "BROKER_CANCELLED"
+    if normalized in {"SUBMIT_FAILED", "SUBMIT FAILED", "FAILED", "DISABLED", "DELETED"}:
+        return "BROKER_REJECTED"
+    if normalized in {"TIMEOUT", "TIME_OUT", "TIME OUT", "EXPIRED"}:
+        return "BROKER_EXPIRED"
+    if normalized in {"SUBMITTING", "SUBMITTED", "WAITING_SUBMIT", "WAITING SUBMIT", "UNSUBMITTED"}:
+        return "BROKER_SUBMITTED"
+    return "BROKER_STATUS_UNKNOWN"
+
+
+def numeric_or_original(value):
+    if value in {None, ""}:
+        return value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
