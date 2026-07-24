@@ -54,6 +54,7 @@ python backend/test_moomoo_paper_adapter.py
 - `/paper/preview` stores a read-only `quote_snapshot` for audit, and approval queue payloads preserve it.
 - `/paper/execute/{queue_id}` has an execution-time reduce-only SELL guard against the local paper portfolio and active account suffix.
 - `/paper/execute/{queue_id}` also audits the stored approval payload and rejects missing quote snapshots, non-PASS agent summaries, stale blockers, or non-approved payload status before adapter submission.
+- Execution audit cross-checks approval queue row fields against the stored preview, quote snapshot, and approval candidate before broker submission.
 
 ## Good Next Tasks
 

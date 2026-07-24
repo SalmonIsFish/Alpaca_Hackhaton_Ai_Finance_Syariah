@@ -215,12 +215,55 @@ def validate_approval_payload_for_execution(approval: dict) -> dict:
     blockers = preview.get("blockers")
     if blockers:
         errors.append("payload.preview.blockers_must_be_empty")
+    errors.extend(row_payload_consistency_errors(approval, preview, approval_payload, quote))
 
     return {
         "status": "PASS" if not errors else "REJECT",
         "errors": errors,
         "quote_snapshot": quote if isinstance(quote, dict) else None,
     }
+
+
+def row_payload_consistency_errors(approval: dict, preview: dict, approval_payload: dict, quote: dict | None) -> list[str]:
+    errors = []
+    if normalize_text(preview.get("symbol")) != normalize_text(approval.get("symbol")):
+        errors.append("payload.preview.symbol_mismatch")
+    if normalize_text(preview.get("side")) != normalize_text(approval.get("side")):
+        errors.append("payload.preview.side_mismatch")
+    if not numbers_equal(preview.get("quantity"), approval.get("quantity")):
+        errors.append("payload.preview.quantity_mismatch")
+    if not numbers_equal(preview.get("price"), approval.get("price")):
+        errors.append("payload.preview.price_mismatch")
+    if not numbers_equal(preview.get("notional"), approval.get("notional")):
+        errors.append("payload.preview.notional_mismatch")
+    if approval_payload.get("execution_environment") != approval.get("execution_environment"):
+        errors.append("payload.approval.execution_environment_mismatch")
+    if isinstance(quote, dict) and normalize_text(quote.get("symbol")) != normalize_text(approval.get("symbol")):
+        errors.append("payload.preview.quote_snapshot.symbol_mismatch")
+    candidate = approval_payload.get("candidate")
+    if isinstance(candidate, dict):
+        if normalize_text(candidate.get("symbol")) != normalize_text(approval.get("symbol")):
+            errors.append("payload.approval.candidate.symbol_mismatch")
+        if normalize_text(candidate.get("side")) != normalize_text(approval.get("side")):
+            errors.append("payload.approval.candidate.side_mismatch")
+        if not numbers_equal(candidate.get("quantity"), approval.get("quantity")):
+            errors.append("payload.approval.candidate.quantity_mismatch")
+        if not numbers_equal(candidate.get("price"), approval.get("price")):
+            errors.append("payload.approval.candidate.price_mismatch")
+        if not numbers_equal(candidate.get("notional"), approval.get("notional")):
+            errors.append("payload.approval.candidate.notional_mismatch")
+    return errors
+
+
+def normalize_text(value) -> str:
+    return str(value or "").strip().upper()
+
+
+def numbers_equal(left, right, *, tolerance: float = 0.0001) -> bool:
+    try:
+        return abs(float(left) - float(right)) <= tolerance
+    except (TypeError, ValueError):
+        return left == right
 
 
 def validate_sell_reduction(connection: sqlite3.Connection, approval: dict, moomoo: dict) -> dict:

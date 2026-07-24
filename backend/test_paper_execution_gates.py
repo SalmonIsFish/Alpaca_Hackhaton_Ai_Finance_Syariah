@@ -69,6 +69,15 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
         "status": "APPROVED_PAPER_READY",
         "broker_submission": False,
         "execution_environment": "SIMULATE",
+        "candidate": {
+            "signal": side,
+            "compliance": {"status": "COMPLIANT", "source": "TEST"},
+            "symbol": "AAPL",
+            "side": side,
+            "quantity": quantity,
+            "price": 333.74,
+            "notional": round(quantity * 333.74, 2),
+        },
     }
     return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)["id"]
 
@@ -159,6 +168,20 @@ def main() -> None:
         assert stale_blocker_result["status"] == "APPROVAL_AUDIT_FAILED"
         assert "payload.preview.blockers_must_be_empty" in stale_blocker_result["approval_audit"]["errors"]
         assert stale_blocker_result["broker_submission"] is False
+
+        preview_symbol_mismatch_id = add_approval(connection)
+        mutate_payload(connection, preview_symbol_mismatch_id, lambda payload: payload["preview"].update({"symbol": "MSFT"}))
+        preview_symbol_mismatch_result = execute_paper_order(connection, preview_symbol_mismatch_id)
+        assert preview_symbol_mismatch_result["status"] == "APPROVAL_AUDIT_FAILED"
+        assert "payload.preview.symbol_mismatch" in preview_symbol_mismatch_result["approval_audit"]["errors"]
+        assert preview_symbol_mismatch_result["broker_submission"] is False
+
+        candidate_quantity_mismatch_id = add_approval(connection)
+        mutate_payload(connection, candidate_quantity_mismatch_id, lambda payload: payload["approval"]["candidate"].update({"quantity": 99}))
+        candidate_quantity_mismatch_result = execute_paper_order(connection, candidate_quantity_mismatch_id)
+        assert candidate_quantity_mismatch_result["status"] == "APPROVAL_AUDIT_FAILED"
+        assert "payload.approval.candidate.quantity_mismatch" in candidate_quantity_mismatch_result["approval_audit"]["errors"]
+        assert candidate_quantity_mismatch_result["broker_submission"] is False
 
         set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
         sell_without_position_id = add_approval(connection, side="SELL")

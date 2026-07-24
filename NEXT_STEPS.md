@@ -211,6 +211,7 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
   - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.
   - tests cover missing quote snapshots and stale blockers before any adapter call.
+  - row-vs-payload consistency checks now reject mismatched preview, quote, and approval candidate symbol/side/quantity/price/notional fields.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
   - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.
