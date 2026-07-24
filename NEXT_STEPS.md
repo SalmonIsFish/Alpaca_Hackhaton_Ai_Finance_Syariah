@@ -199,6 +199,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - portfolio tests now verify partial SELL realized P&L and full-close realized P&L.
   - closed positions no longer hide realized P&L from `total_realized_pnl`.
   - Moomoo adapter tests verify SELL maps to `TrdSide.SELL` without contacting OpenD.
+- Pre-trade quote snapshots were added on July 25, 2026:
+  - `/paper/preview` now records `quote_snapshot` with latest close, price date, source, freshness/cache fields, and bar count.
+  - approval queue payloads persist the quote snapshot for audit.
+  - dashboard Approval Queue and Paper Orders show preview quote metadata.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
   - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.

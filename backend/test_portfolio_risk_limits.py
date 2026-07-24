@@ -126,6 +126,9 @@ def main() -> None:
         assert "portfolio_existing_position" in blocked_preview["blockers"]
         assert "blocker_messages" in blocked_preview
         assert any("above the 35.00% position limit" in item["message"] for item in blocked_preview["blocker_messages"])
+        assert blocked_preview["quote_snapshot"]["quote_snapshot_source"] == "market_data"
+        assert blocked_preview["quote_snapshot"]["latest_close"] == 300.0
+        assert blocked_preview["quote_snapshot"]["source"] == "test_price"
         portfolio_risk = blocked_preview["agent_summary"]["risk"]["details"]["portfolio"]
         assert portfolio_risk["projected_position_exposure"] == 400.0
         assert portfolio_risk["projected_total_exposure"] == 400.0

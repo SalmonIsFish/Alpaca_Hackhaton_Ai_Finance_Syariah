@@ -1454,7 +1454,9 @@
         const blockers = payload.preview?.blockers || [];
         const blockerMessages = payload.preview?.blocker_messages || [];
         const portfolioRisk = payload.preview?.agent_summary?.risk?.details?.portfolio;
+        const quote = payload.preview?.quote_snapshot || {};
         const exposureLine = portfolioRisk ? `<span>Projected Position ${formatPct(portfolioRisk.projected_position_pct)} | Projected Total ${formatPct(portfolioRisk.projected_total_exposure_pct)}</span>` : "";
+        const quoteLine = quote.source ? `<span>Quote ${formatMoney(quote.latest_close)} | ${quote.source} | ${quote.latest_date || "-"} | Bars ${quote.bars ?? "-"}</span>` : "";
         const blockerLine = blockerMessages.length ? blockerMessages.map((message) => `<span>${message.message}</span>`).join("") : blockers.length ? `<span>Blockers ${blockers.join(", ")}</span>` : "";
         row.innerHTML = `
           <span class="badge ${statusClass}">${item.approval_status}</span>
@@ -1462,6 +1464,7 @@
           <div class="queue-meta">
             <span>${item.side} ${item.quantity ?? "-"} @ ${item.price ?? "-"}</span>
             ${exposureLine}
+            ${quoteLine}
             ${blockerLine}
             <span>${notional} · Shariah ${item.shariah_status || "-"} / ${item.shariah_market || "-"} · Quant ${item.quant_signal || "-"} · Risk ${item.risk_status || "-"}</span>
           </div>
@@ -1509,6 +1512,8 @@
         const reconciliation = reconciliationFor(item) || {};
         const row = document.createElement("div");
         row.className = "paper-order";
+        const payload = approvalPayload(item);
+        const quote = payload.preview?.quote_snapshot || {};
         const status = reconciliation.status || broker.status || item.execution_status || "BROKER_SUBMITTED";
         const brokerOrderId = broker.broker_order_id || item.execution_message || "-";
         const fillStatus = reconciliation.order_status || broker.order_status || broker.fill_status || status;
@@ -1537,6 +1542,7 @@
             <div class="paper-order-field"><span>Account</span><strong>${accountType} ${accountSuffix}</strong></div>
             <div class="paper-order-field"><span>Executed At</span><strong>${formatLocalTime(executedAt)}</strong></div>
             <div class="paper-order-field"><span>Adapter</span><strong>${broker.adapter || "-"}</strong></div>
+            <div class="paper-order-field"><span>Preview Quote</span><strong>${quote.source ? `${formatMoney(quote.latest_close)} ${quote.source} ${quote.latest_date || ""}` : "-"}</strong></div>
           </div>
           <button class="secondary queue-action" type="button" data-reconcile-id="${item.id}">Refresh Status</button>
           <pre class="adapter-response"></pre>

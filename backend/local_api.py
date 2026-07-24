@@ -353,6 +353,56 @@ def evaluate_preview_request(request: PaperPreviewRequest) -> dict:
         connection.close()
 
 
+def quote_snapshot_for_preview(evaluation: dict, request: PaperPreviewRequest) -> dict:
+    quant = evaluation.get("agent_summary", {}).get("quant", {})
+    symbol = evaluation.get("symbol") or request.symbol.strip().upper()
+    snapshot = {
+        "symbol": symbol,
+        "latest_close": quant.get("price") or evaluation.get("price"),
+        "latest_date": quant.get("latest_date"),
+        "source": quant.get("price_source"),
+        "bars": quant.get("bars"),
+        "min_bars": quant.get("min_bars"),
+        "enough_history": quant.get("enough_history"),
+        "data_freshness": quant.get("data_freshness"),
+        "cache_cached_at": quant.get("cache_cached_at"),
+        "cache_age_hours": quant.get("cache_age_hours"),
+        "fallback_allowed": False,
+        "stale_cache_allowed": True,
+        "quote_snapshot_source": "quant_agent",
+    }
+    if snapshot["latest_date"] is not None and snapshot["source"] is not None:
+        return snapshot
+
+    try:
+        market = summarize_history(
+            symbol,
+            days=14,
+            min_bars=1,
+            allow_fallback=False,
+            allow_stale_cache=True,
+        )
+    except Exception as exc:
+        snapshot["quote_snapshot_source"] = "market_data_error"
+        snapshot["error"] = type(exc).__name__
+        return snapshot
+
+    snapshot.update(
+        {
+            "latest_close": market.get("latest_close"),
+            "latest_date": market.get("latest_date"),
+            "source": market.get("source"),
+            "bars": market.get("bars"),
+            "min_bars": market.get("min_bars"),
+            "enough_history": market.get("enough_history"),
+            "start_date": market.get("start_date"),
+            "end_date": market.get("end_date"),
+            "quote_snapshot_source": "market_data",
+        }
+    )
+    return snapshot
+
+
 @app.get("/")
 def home() -> dict:
     settings = load_settings()
@@ -541,6 +591,7 @@ def evaluate_agents(request: PaperPreviewRequest) -> dict:
 @app.post("/paper/preview")
 def preview_paper_order(request: PaperPreviewRequest) -> dict:
     evaluation = evaluate_preview_request(request)
+    quote_snapshot = quote_snapshot_for_preview(evaluation, request)
     side = request.side.strip().upper()
     if evaluation["decision"] != "READY_FOR_APPROVAL" or evaluation["price"] is None:
         preview = {
@@ -553,6 +604,7 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "notional": evaluation["notional"],
             "side": side,
             "broker_submission": False,
+            "quote_snapshot": quote_snapshot,
             "blocker_messages": evaluation.get("blocker_messages", []),
             "agent_summary": evaluation["agent_summary"],
         }
@@ -567,6 +619,7 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "price": evaluation["price"],
             "notional": evaluation["notional"],
             "blockers": evaluation.get("blockers", []),
+            "quote_snapshot": quote_snapshot,
             "shariah": evaluation["agent_summary"]["shariah"],
             "risk": evaluation["agent_summary"]["risk"],
             "blocker_messages": evaluation.get("blocker_messages", []),

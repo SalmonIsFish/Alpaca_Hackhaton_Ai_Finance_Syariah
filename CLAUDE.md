@@ -51,6 +51,7 @@ python backend/test_moomoo_paper_adapter.py
 - Portfolio rows have a `Reduce` button that loads a SELL ticket from the local position.
 - Portfolio ledger tests cover partial and full SELL fills, including realized P&L after a position is closed.
 - Moomoo adapter tests cover SELL side mapping without contacting OpenD.
+- `/paper/preview` stores a read-only `quote_snapshot` for audit, and approval queue payloads preserve it.
 
 ## Good Next Tasks
 

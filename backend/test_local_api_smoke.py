@@ -360,7 +360,9 @@ def main() -> None:
                 "reason": "test_override",
                 "price": 333.74,
                 "bars": 218,
+                "latest_date": "2026-07-21",
                 "price_source": "tiingo",
+                "data_freshness": "live",
                 "strategy": {"signal": "BUY"},
             },
             "risk": {
@@ -394,6 +396,11 @@ def main() -> None:
     assert ready_preview_payload["preview"]["status"] == "READY_FOR_APPROVAL"
     assert ready_preview_payload["preview"]["broker_submission"] is False
     assert ready_preview_payload["preview"]["agent_summary"]["shariah"]["provider"] == "ZOYA"
+    assert ready_preview_payload["preview"]["quote_snapshot"]["symbol"] == "AAPL"
+    assert ready_preview_payload["preview"]["quote_snapshot"]["latest_close"] == 333.74
+    assert ready_preview_payload["preview"]["quote_snapshot"]["latest_date"] == "2026-07-21"
+    assert ready_preview_payload["preview"]["quote_snapshot"]["source"] == "tiingo"
+    assert ready_preview_payload["preview"]["quote_snapshot"]["data_freshness"] == "live"
 
     ready_approval = client.post(
         "/paper/approval",
@@ -421,6 +428,9 @@ def main() -> None:
     assert latest_approval["shariah_market"] == "US"
     assert latest_approval["quant_signal"] == "BUY"
     assert latest_approval["risk_status"] == "PASS"
+    latest_payload = json.loads(latest_approval["payload"])
+    assert latest_payload["preview"]["quote_snapshot"]["source"] == "tiingo"
+    assert latest_payload["preview"]["quote_snapshot"]["latest_date"] == "2026-07-21"
 
     missing_confirmation = client.post(f"/paper/execute/{ready_approval_payload['queue_id']}", json={})
     assert missing_confirmation.status_code == 200, missing_confirmation.text
