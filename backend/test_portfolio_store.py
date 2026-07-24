@@ -13,16 +13,16 @@ def make_connection() -> sqlite3.Connection:
     return connection
 
 
-def add_filled_order(connection: sqlite3.Connection, *, price: float, order_id: str, side: str = "BUY") -> dict:
+def add_filled_order(connection: sqlite3.Connection, *, price: float, order_id: str, side: str = "BUY", quantity: float = 1.0) -> dict:
     preview = {
         "status": "READY_FOR_APPROVAL",
         "execution": "PAPER_ONLY",
         "broker_submission": False,
         "symbol": "AAPL",
         "side": side,
-        "quantity": 1,
+        "quantity": quantity,
         "price": 333.74,
-        "notional": 333.74,
+        "notional": round(quantity * 333.74, 2),
         "agent_summary": {
             "shariah": {"status": "PASS", "market": "US", "provider": "ZOYA"},
             "quant": {"status": "PASS", "signal": "BUY"},
@@ -43,9 +43,9 @@ def add_filled_order(connection: sqlite3.Connection, *, price: float, order_id: 
         "broker_code": "US.AAPL",
         "order_status": "FILLED_ALL",
         "side": side,
-        "quantity": 1.0,
+        "quantity": quantity,
         "price": 333.74,
-        "dealt_qty": 1.0,
+        "dealt_qty": quantity,
         "dealt_avg_price": price,
         "environment": "SIMULATE",
         "account_type": "MARGIN",
@@ -59,6 +59,13 @@ def add_filled_order(connection: sqlite3.Connection, *, price: float, order_id: 
 
 def main() -> None:
     connection = make_connection()
+    invalid_sell = add_filled_order(connection, price=350.0, order_id="ORDER-0", side="SELL")
+    invalid_sell_sync = sync_filled_order(connection, invalid_sell)
+    assert invalid_sell_sync["status"] == "INVALID_SELL_FILL"
+    assert invalid_sell_sync["position_updated"] is False
+    assert invalid_sell_sync["available_quantity"] == 0.0
+    assert portfolio_snapshot(connection)["fill_count"] == 0
+
     first = add_filled_order(connection, price=321.86, order_id="ORDER-1")
 
     first_sync = sync_filled_order(connection, first)
@@ -76,6 +83,12 @@ def main() -> None:
     assert second_sync["position"]["quantity"] == 2.0
     assert second_sync["position"]["average_cost"] == 310.93
     assert second_sync["position"]["cost_basis"] == 621.86
+
+    oversized_sell = add_filled_order(connection, price=350.0, order_id="ORDER-2B", side="SELL", quantity=3.0)
+    oversized_sell_sync = sync_filled_order(connection, oversized_sell)
+    assert oversized_sell_sync["status"] == "INVALID_SELL_FILL"
+    assert oversized_sell_sync["position_updated"] is False
+    assert oversized_sell_sync["available_quantity"] == 2.0
 
     partial_sell = add_filled_order(connection, price=350.0, order_id="ORDER-3", side="SELL")
     partial_sell_sync = sync_filled_order(connection, partial_sell)

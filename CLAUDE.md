@@ -55,6 +55,7 @@ python backend/test_moomoo_paper_adapter.py
 - `/paper/execute/{queue_id}` has an execution-time reduce-only SELL guard against the local paper portfolio and active account suffix.
 - `/paper/execute/{queue_id}` also audits the stored approval payload and rejects missing quote snapshots, non-PASS agent summaries, stale blockers, or non-approved payload status before adapter submission.
 - Execution audit cross-checks approval queue row fields against the stored preview, quote snapshot, and approval candidate before broker submission.
+- Portfolio fill sync rejects filled SELL reconciliations that exceed the local position, so bad or stale broker reconciliation cannot silently distort local holdings.
 
 ## Good Next Tasks
 

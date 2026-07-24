@@ -87,6 +87,28 @@ def sync_filled_order(connection: sqlite3.Connection, approval: dict) -> dict:
     broker_order_id = str(reconciliation.get("broker_order_id") or approval.get("execution_message") or "")
     notional = round(quantity * avg_price, 4)
 
+    if side == "SELL":
+        position = connection.execute(
+            """
+            SELECT COALESCE(quantity, 0) AS quantity
+            FROM paper_positions
+            WHERE symbol = ? AND account_suffix = ?
+            """,
+            (symbol, account_suffix),
+        ).fetchone()
+        available_quantity = round(float(position["quantity"] or 0), 4) if position else 0.0
+        if available_quantity <= 0 or quantity > available_quantity:
+            return {
+                "status": "INVALID_SELL_FILL",
+                "queue_id": queue_id,
+                "position_updated": False,
+                "reason": "sell_fill_exceeds_local_position",
+                "symbol": symbol,
+                "requested_quantity": quantity,
+                "available_quantity": available_quantity,
+                "account_suffix": account_suffix,
+            }
+
     connection.execute(
         """
         INSERT INTO paper_fills (

@@ -207,6 +207,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `/paper/execute/{queue_id}` now re-checks local portfolio quantity before submitting any SELL.
   - SELL is rejected with `PORTFOLIO_SELL_GATE_FAILED` if no local position exists or requested quantity exceeds the active paper account suffix.
   - Tests cover no-position SELL, oversized SELL, and valid reduce SELL without contacting Moomoo.
+- Portfolio fill sync SELL integrity was added on July 25, 2026:
+  - filled SELL reconciliations are rejected with `INVALID_SELL_FILL` when local holdings are missing or smaller than the fill quantity.
+  - rejected SELL fills are not inserted into `paper_fills` and do not change `paper_positions`.
+  - tests cover no-position and oversized SELL reconciliation before any ledger mutation.
 - Approval payload audit guard was added on July 25, 2026:
   - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
   - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.
