@@ -51,6 +51,7 @@ python backend/test_moomoo_paper_adapter.py
 
 ## Good Next Tasks
 
-1. Make risk limits configurable through env vars instead of constants in `risk_checks.py`.
-2. Add a dedicated Positions page or table with clearer partial-reduce controls.
-3. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+1. Redesign the dashboard information architecture. The current single-page dashboard has too many stacked panels and requires too much scrolling. Claude Code should make this more user-friendly, likely with tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, and Audit/Diagnostics.
+2. Make risk limits configurable through env vars instead of constants in `risk_checks.py`.
+3. Add a dedicated Positions page or table with clearer partial-reduce controls.
+4. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
