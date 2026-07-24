@@ -4,6 +4,8 @@
 
 This repo is a local-first Shariah-compliant paper-trading workflow. It uses deterministic agents for Shariah, quant, and risk checks before anything can enter the approval queue. Broker submission is paper-only and must stay behind explicit gates.
 
+Latest shutdown checkpoint: `89b6e1b Add investment committee API contract` on July 25, 2026 02:03 +08:00. Git working tree was clean before this handoff update.
+
 ## Safety Rules
 
 - Live trading is disabled by design. Keep `MOOMOO_MODE=paper`.
@@ -33,9 +35,10 @@ Focused tests:
 .\.venv\Scripts\python.exe backend/test_portfolio_risk_limits.py
 .\.venv\Scripts\python.exe backend/test_investment_committee.py
 .\.venv\Scripts\python.exe backend/test_stock_profile.py
-python backend/test_portfolio_store.py
-python backend/test_paper_execution_gates.py
-python backend/test_moomoo_paper_adapter.py
+.\.venv\Scripts\python.exe backend/test_portfolio_store.py
+.\.venv\Scripts\python.exe backend/test_paper_execution_gates.py
+.\.venv\Scripts\python.exe backend/test_moomoo_paper_adapter.py
+.\.venv\Scripts\python.exe backend/test_risk_checks.py
 ```
 
 ## Current State
@@ -63,6 +66,8 @@ python backend/test_moomoo_paper_adapter.py
 
 ## Good Next Tasks
 
-1. Redesign the dashboard information architecture. The current single-page dashboard has too many stacked panels and requires too much scrolling. Claude Code should make this more user-friendly, likely with tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, and Audit/Diagnostics.
-2. Add a dedicated Positions page or table with clearer partial-reduce controls.
-3. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+1. Redesign the dashboard information architecture. The current single-page dashboard has too many stacked panels and requires too much scrolling. Claude Code should make this more user-friendly, likely with tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, Stock Profile, Investment Committee, and Audit/Diagnostics.
+2. Use `GET /investment-committee` as the backend contract for the Investment Committee view instead of re-aggregating data in the browser.
+3. Use `GET /stock/{symbol}/profile` as the backend contract for a future stock detail page.
+4. Add a dedicated Positions page or table with clearer partial-reduce controls.
+5. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.

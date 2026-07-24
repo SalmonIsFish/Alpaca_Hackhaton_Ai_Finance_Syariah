@@ -2,14 +2,22 @@
 
 ## Resume After Shutdown
 
-Last saved: July 23, 2026, Asia/Kuala_Lumpur.
+Last saved: July 25, 2026 02:03 +08:00, Asia/Kuala_Lumpur.
 
 What just worked:
 
-- The controlled Moomoo paper execution flow worked end to end.
-- Dashboard approval queue produced an `APPROVED_PAPER_READY` AAPL paper order.
-- `Execute Paper` submitted to the Moomoo paper/simulate account.
-- Moomoo Papertrade showed a transaction update that the paper order was filled.
+- Latest clean git checkpoint: `89b6e1b Add investment committee API contract`.
+- Backend technical hardening is saved through execution audit checks, reduce-only SELL guards, portfolio SELL fill integrity, stock profile API, and Investment Committee API.
+- Latest non-network test set passed:
+  - `test_investment_committee.py`
+  - `test_stock_profile.py`
+  - `test_local_api_smoke.py`
+  - `test_portfolio_risk_limits.py`
+  - `test_paper_execution_gates.py`
+  - `test_portfolio_store.py`
+  - `test_moomoo_paper_adapter.py`
+  - `test_risk_checks.py`
+- The older controlled Moomoo paper execution also worked end to end, with queue `54` filled and synced into the local portfolio ledger.
 
 Start next session:
 
@@ -26,12 +34,12 @@ C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
 
 Recently completed build task:
 
-1. Renamed queue label `Broker On` to `Broker Submitted`.
-2. Added a clearer Paper Orders section with broker order id, submitted/fill status, environment, account suffix, execution timestamp, and raw adapter response.
-3. Ran a controlled Moomoo paper execution test through the locked `/paper/execute/{queue_id}` path.
-4. Added paper order reconciliation with `POST /paper/reconcile/{queue_id}` and dashboard `Refresh Status`.
-5. Added local portfolio/exposure tracking from filled paper orders with `GET /portfolio`.
-6. Added mark-to-market portfolio valuation using Tiingo/cache prices with no fixture fallback.
+1. Added read-only `GET /investment-committee` for future Claude Code UI work.
+2. Added read-only `GET /stock/{symbol}/profile` for a future stock detail page.
+3. Hardened execution approval audits with row-vs-payload consistency checks.
+4. Added reduce-only SELL guards at execution time and portfolio sync time.
+5. Added configurable portfolio risk limits and mark-to-market exposure.
+6. Added quote snapshots to paper previews and approval payloads.
 7. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
 
 ## Current State
@@ -65,6 +73,8 @@ Working components:
   - dashboard can auto-scan the watchlist on a configurable minute interval
 - Locked paper execution endpoint.
 - Typed paper execution confirmation gate requiring `EXECUTE PAPER`.
+- Read-only Stock Profile API at `GET /stock/{symbol}/profile`.
+- Read-only Investment Committee API at `GET /investment-committee`.
 - Paper execution gate stack with fake and real adapter paths:
   - `approval` or `autonomous_paper` trading mode required
   - `PAPER_EXECUTION_ENABLED=true` required
@@ -135,8 +145,13 @@ Recommended test flow:
 ```powershell
 cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
 ..\.venv\Scripts\python.exe test_local_api_smoke.py
+..\.venv\Scripts\python.exe test_investment_committee.py
+..\.venv\Scripts\python.exe test_stock_profile.py
+..\.venv\Scripts\python.exe test_portfolio_risk_limits.py
+..\.venv\Scripts\python.exe test_portfolio_store.py
 ..\.venv\Scripts\python.exe test_paper_execution_gates.py
 ..\.venv\Scripts\python.exe test_moomoo_paper_adapter.py
+..\.venv\Scripts\python.exe test_risk_checks.py
 ..\.venv\Scripts\python.exe check_market_data.py AAPL --strict
 ..\.venv\Scripts\python.exe check_zoya.py AAPL
 ..\.venv\Scripts\python.exe check_moomoo_status.py
@@ -155,22 +170,15 @@ Expected good signs:
 
 Next recommended build step:
 
-1. Tune portfolio/risk policy:
-   - set `PAPER_ACCOUNT_EQUITY` to the intended paper account risk base
-   - decide whether same-symbol add-ons should always block or only block above the 5% position ceiling
-   - consider per-symbol overrides for highly liquid names if needed
-   - keep pricing read-only and order placement behind the existing gates
-   - Risk Policy panel now displays the active denominator, limits, current exposure, add-on policy, and current ticket pass/block state
-   - Portfolio rows now include a `Reduce` action that fills the ticket as a reduce-only SELL preview
-   - risk thresholds are now configurable with `MAX_POSITION_PCT`, `MAX_TOTAL_EXPOSURE_PCT`, `MAX_LOSS_PER_TRADE_PCT`, `MAX_DAILY_LOSS_PCT`, and `MAX_ORDERS_PER_DAY`
+1. Claude Code UI pass:
+   - redesign the dashboard information architecture because the current single-page dashboard has too many stacked panels and too much scrolling
+   - use the new read-only `/investment-committee` and `/stock/{symbol}/profile` contracts
+   - likely split into tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, Stock Profile, Investment Committee, and Audit/Diagnostics
 
-2. After portfolio/risk limits are reliable, add market/investment-firm features:
-   - watchlist
-   - opportunities page
-   - stock profile page
-   - market overview
-   - portfolio/exposure view
-   - investment committee review page
+2. Optional next backend phase:
+   - add a read-only market overview API
+   - add a dedicated positions API if Claude needs a cleaner table contract than `/portfolio`
+   - add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior
 
 Do not jump to autonomous paper mode until manual paper execution is reliable and fully audited.
 
