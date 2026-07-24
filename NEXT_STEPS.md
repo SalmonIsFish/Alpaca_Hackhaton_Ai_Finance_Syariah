@@ -195,6 +195,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `risk_checks.py` keeps current defaults but accepts injected limits.
   - `load_settings()` reads all risk thresholds from env vars.
   - `/portfolio` and portfolio risk overlays report/use the active configured limits.
+- SELL/reduce technical coverage was added on July 25, 2026:
+  - portfolio tests now verify partial SELL realized P&L and full-close realized P&L.
+  - closed positions no longer hide realized P&L from `total_realized_pnl`.
+  - Moomoo adapter tests verify SELL maps to `TrdSide.SELL` without contacting OpenD.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
   - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.

@@ -288,7 +288,8 @@ def portfolio_snapshot(connection: sqlite3.Connection, *, price_lookup=None) -> 
         ).fetchall()
     ]
     total_cost_basis = round(sum(float(position["cost_basis"]) for position in positions), 4)
-    total_realized_pnl = round(sum(float(position["realized_pnl"]) for position in positions), 4)
+    realized_row = connection.execute("SELECT COALESCE(SUM(realized_pnl), 0) AS total_realized_pnl FROM paper_positions").fetchone()
+    total_realized_pnl = round(float(realized_row["total_realized_pnl"] or 0), 4)
     valued_positions = [position for position in positions if position.get("market_value") is not None]
     market_value = round(sum(float(position["market_value"]) for position in valued_positions), 4) if valued_positions else None
     unrealized_pnl = round(sum(float(position["unrealized_pnl"]) for position in valued_positions), 4) if valued_positions else None

@@ -49,6 +49,8 @@ python backend/test_moomoo_paper_adapter.py
 - Dashboard shows readable blocker messages in Agent Summary, Investment Committee, and Approval Queue.
 - Dashboard has a Risk Policy panel showing account equity, risk limits, total exposure, add-on policy, and the current ticket state.
 - Portfolio rows have a `Reduce` button that loads a SELL ticket from the local position.
+- Portfolio ledger tests cover partial and full SELL fills, including realized P&L after a position is closed.
+- Moomoo adapter tests cover SELL side mapping without contacting OpenD.
 
 ## Good Next Tasks
 

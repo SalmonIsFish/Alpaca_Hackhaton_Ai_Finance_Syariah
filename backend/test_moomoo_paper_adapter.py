@@ -114,6 +114,23 @@ def main() -> None:
         assert call["fill_outside_rth"] is False
         assert call["session"] == "NONE"
 
+        sell_result = moomoo_paper_adapter.submit_paper_order(
+            {
+                "id": 44,
+                "symbol": "AAPL",
+                "side": "SELL",
+                "quantity": 1,
+                "price": 200.0,
+                "shariah_market": "US",
+            },
+            moomoo={},
+        )
+        assert sell_result["status"] == "BROKER_SUBMITTED"
+        sell_call = FakeTradeContext.instances[-1].place_order_calls[0]
+        assert sell_call["code"] == "US.AAPL"
+        assert sell_call["trd_side"] == "SELL"
+        assert sell_call["remark"] == "Amanah queue 44"
+
         unsupported = moomoo_paper_adapter.submit_paper_order(
             {
                 "id": 43,
