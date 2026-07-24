@@ -162,6 +162,7 @@ Next recommended build step:
    - keep pricing read-only and order placement behind the existing gates
    - Risk Policy panel now displays the active denominator, limits, current exposure, add-on policy, and current ticket pass/block state
    - Portfolio rows now include a `Reduce` action that fills the ticket as a reduce-only SELL preview
+   - risk thresholds are now configurable with `MAX_POSITION_PCT`, `MAX_TOTAL_EXPOSURE_PCT`, `MAX_LOSS_PER_TRADE_PCT`, `MAX_DAILY_LOSS_PCT`, and `MAX_ORDERS_PER_DAY`
 
 2. After portfolio/risk limits are reliable, add market/investment-firm features:
    - watchlist
@@ -190,6 +191,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - Dashboard Risk Policy panel shows account equity, risk limits, current exposure, same-symbol add-on policy, and current ticket state.
   - Portfolio `Reduce` buttons populate a SELL ticket from the local position.
   - `CLAUDE.md` was added as the Claude Code handoff file.
+- Configurable risk limits were added on July 25, 2026:
+  - `risk_checks.py` keeps current defaults but accepts injected limits.
+  - `load_settings()` reads all risk thresholds from env vars.
+  - `/portfolio` and portfolio risk overlays report/use the active configured limits.
 - Mark-to-market portfolio valuation was added on July 25, 2026:
   - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
   - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.

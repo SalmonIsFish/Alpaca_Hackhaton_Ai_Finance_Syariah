@@ -42,7 +42,8 @@ python backend/test_moomoo_paper_adapter.py
 - Local portfolio has `1.0 AAPL`, account suffix `1740`, account type `MARGIN`.
 - `/portfolio` marks positions to market using Tiingo/cache with no fixture fallback.
 - `PAPER_ACCOUNT_EQUITY` defaults to `10000` and is used as the denominator for risk exposure percentages.
-- Position limit is `5%`; total exposure limit is `25%`.
+- Risk limits are configurable through env vars: `MAX_POSITION_PCT`, `MAX_TOTAL_EXPOSURE_PCT`, `MAX_LOSS_PER_TRADE_PCT`, `MAX_DAILY_LOSS_PCT`, and `MAX_ORDERS_PER_DAY`.
+- Default position limit is `5%`; default total exposure limit is `25%`.
 - BUY add-ons for an existing symbol are blocked by policy.
 - SELL previews are reduce-only: they can become ready only when the local paper position exists and sell quantity does not exceed local quantity.
 - Dashboard shows readable blocker messages in Agent Summary, Investment Committee, and Approval Queue.
@@ -52,6 +53,5 @@ python backend/test_moomoo_paper_adapter.py
 ## Good Next Tasks
 
 1. Redesign the dashboard information architecture. The current single-page dashboard has too many stacked panels and requires too much scrolling. Claude Code should make this more user-friendly, likely with tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, and Audit/Diagnostics.
-2. Make risk limits configurable through env vars instead of constants in `risk_checks.py`.
-3. Add a dedicated Positions page or table with clearer partial-reduce controls.
-4. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+2. Add a dedicated Positions page or table with clearer partial-reduce controls.
+3. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.

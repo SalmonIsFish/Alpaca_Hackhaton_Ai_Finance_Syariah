@@ -18,7 +18,6 @@ from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order
 from portfolio_store import ensure_portfolio_tables, portfolio_snapshot, sync_filled_order
-from risk_checks import MAX_POSITION_PCT, MAX_TOTAL_EXPOSURE_PCT
 from trading_modes import trading_mode_status
 from watchlist_store import (
     ensure_watchlist_tables,
@@ -171,10 +170,6 @@ def add_exposure_metadata(snapshot: dict, *, account_equity: float) -> dict:
     snapshot["paper_account_equity"] = account_equity
     snapshot["total_exposure"] = total_exposure
     snapshot["total_exposure_pct"] = round((total_exposure / account_equity) * 100, 4)
-    snapshot["risk_limits"] = {
-        "max_position_pct": MAX_POSITION_PCT,
-        "max_total_exposure_pct": MAX_TOTAL_EXPOSURE_PCT,
-    }
     for position in snapshot.get("positions", []):
         value = exposure_value(position)
         position["exposure_value"] = round(value, 4)
@@ -184,14 +179,27 @@ def add_exposure_metadata(snapshot: dict, *, account_equity: float) -> dict:
 
 def portfolio_snapshot_with_exposure(connection: sqlite3.Connection) -> dict:
     settings = load_settings()
-    return add_exposure_metadata(
+    snapshot = add_exposure_metadata(
         portfolio_snapshot(connection, price_lookup=portfolio_price_lookup),
         account_equity=settings.paper_account_equity,
     )
+    snapshot["risk_limits"] = risk_limits_from_settings(settings)
+    return snapshot
+
+
+def risk_limits_from_settings(settings) -> dict:
+    return {
+        "max_position_pct": settings.max_position_pct,
+        "max_total_exposure_pct": settings.max_total_exposure_pct,
+        "max_loss_per_trade_pct": settings.max_loss_per_trade_pct,
+        "max_daily_loss_pct": settings.max_daily_loss_pct,
+        "max_orders_per_day": settings.max_orders_per_day,
+    }
 
 
 def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict) -> dict:
     settings = load_settings()
+    limits = risk_limits_from_settings(settings)
     symbol = evaluation.get("symbol") or request.symbol.strip().upper()
     side = request.side.strip().upper()
     selected_price = evaluation.get("price") or request.price
@@ -221,12 +229,12 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
     blockers = []
     warnings = []
     messages = {}
-    if projected_position_pct > MAX_POSITION_PCT:
+    if projected_position_pct > limits["max_position_pct"]:
         blockers.append("portfolio_position_limit")
-        messages["portfolio_position_limit"] = f"{symbol} would become {projected_position_pct:.2f}% of paper account equity, above the {MAX_POSITION_PCT:.2f}% position limit."
-    if projected_total_pct > MAX_TOTAL_EXPOSURE_PCT:
+        messages["portfolio_position_limit"] = f"{symbol} would become {projected_position_pct:.2f}% of paper account equity, above the {limits['max_position_pct']:.2f}% position limit."
+    if projected_total_pct > limits["max_total_exposure_pct"]:
         blockers.append("portfolio_total_exposure_limit")
-        messages["portfolio_total_exposure_limit"] = f"Total projected exposure would become {projected_total_pct:.2f}% of paper account equity, above the {MAX_TOTAL_EXPOSURE_PCT:.2f}% total exposure limit."
+        messages["portfolio_total_exposure_limit"] = f"Total projected exposure would become {projected_total_pct:.2f}% of paper account equity, above the {limits['max_total_exposure_pct']:.2f}% total exposure limit."
     if side == "BUY" and current_position_exposure > 0:
         blockers.append("portfolio_existing_position")
         messages["portfolio_existing_position"] = f"{symbol} is already held locally; same-symbol BUY add-ons are blocked until the risk policy is changed."
@@ -261,10 +269,7 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
         "projected_total_exposure_pct": projected_total_pct,
         "effective_position_pct": round(effective_position_pct, 4),
         "effective_total_exposure_pct": round(effective_total_pct, 4),
-        "limits": {
-            "max_position_pct": MAX_POSITION_PCT,
-            "max_total_exposure_pct": MAX_TOTAL_EXPOSURE_PCT,
-        },
+        "limits": limits,
         "valuation_status": snapshot.get("valuation_status"),
         "valuation_errors": snapshot.get("valuation_errors", []),
     }
@@ -275,8 +280,9 @@ def apply_portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperP
     risk = evaluation.setdefault("agent_summary", {}).setdefault("risk", {})
     details = risk.setdefault("details", {})
     checks = details.setdefault("checks", {})
-    checks["portfolio_position_ceiling"] = overlay["projected_position_pct"] <= MAX_POSITION_PCT
-    checks["portfolio_total_exposure"] = overlay["projected_total_exposure_pct"] <= MAX_TOTAL_EXPOSURE_PCT
+    limits = overlay["limits"]
+    checks["portfolio_position_ceiling"] = overlay["projected_position_pct"] <= limits["max_position_pct"]
+    checks["portfolio_total_exposure"] = overlay["projected_total_exposure_pct"] <= limits["max_total_exposure_pct"]
     details["portfolio"] = overlay
     if request.side.strip().upper() == "SELL" and overlay["status"] == "PASS":
         blockers = evaluation.setdefault("blockers", [])

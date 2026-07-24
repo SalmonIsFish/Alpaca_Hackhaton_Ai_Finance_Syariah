@@ -40,6 +40,31 @@ class Settings:
     paper_execution_enabled: bool
     paper_execution_adapter: str
     paper_account_equity: float
+    max_position_pct: float
+    max_total_exposure_pct: float
+    max_loss_per_trade_pct: float
+    max_daily_loss_pct: float
+    max_orders_per_day: int
+
+
+def _float_env(name: str, default: str, *, minimum: float | None = None) -> float:
+    try:
+        value = float(os.getenv(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return value
+
+
+def _int_env(name: str, default: str, *, minimum: int | None = None) -> int:
+    try:
+        value = int(os.getenv(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return value
 
 
 def load_settings() -> Settings:
@@ -56,12 +81,12 @@ def load_settings() -> Settings:
     except ValueError as exc:
         raise ValueError("MOOMOO_PORT must be an integer") from exc
     paper_execution_enabled = os.getenv("PAPER_EXECUTION_ENABLED", "false").strip().lower() == "true"
-    try:
-        paper_account_equity = float(os.getenv("PAPER_ACCOUNT_EQUITY", "10000"))
-    except ValueError as exc:
-        raise ValueError("PAPER_ACCOUNT_EQUITY must be numeric") from exc
-    if paper_account_equity <= 0:
-        raise ValueError("PAPER_ACCOUNT_EQUITY must be greater than zero")
+    paper_account_equity = _float_env("PAPER_ACCOUNT_EQUITY", "10000", minimum=0.01)
+    max_position_pct = _float_env("MAX_POSITION_PCT", "5.0", minimum=0)
+    max_total_exposure_pct = _float_env("MAX_TOTAL_EXPOSURE_PCT", "25.0", minimum=0)
+    max_loss_per_trade_pct = _float_env("MAX_LOSS_PER_TRADE_PCT", "0.5", minimum=0)
+    max_daily_loss_pct = _float_env("MAX_DAILY_LOSS_PCT", "1.0", minimum=0)
+    max_orders_per_day = _int_env("MAX_ORDERS_PER_DAY", "5", minimum=1)
 
     return Settings(
         tiingo_api_token=os.getenv("TIINGO_API_TOKEN") or None,
@@ -76,4 +101,9 @@ def load_settings() -> Settings:
         paper_execution_enabled=paper_execution_enabled,
         paper_execution_adapter=os.getenv("PAPER_EXECUTION_ADAPTER", "disabled").strip().lower(),
         paper_account_equity=paper_account_equity,
+        max_position_pct=max_position_pct,
+        max_total_exposure_pct=max_total_exposure_pct,
+        max_loss_per_trade_pct=max_loss_per_trade_pct,
+        max_daily_loss_pct=max_daily_loss_pct,
+        max_orders_per_day=max_orders_per_day,
     )

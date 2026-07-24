@@ -13,6 +13,11 @@ os.environ["PAPER_EXECUTION_ENABLED"] = "false"
 os.environ["PAPER_EXECUTION_ADAPTER"] = "disabled"
 os.environ["MOOMOO_MODE"] = "paper"
 os.environ["PAPER_ACCOUNT_EQUITY"] = "1000"
+os.environ["MAX_POSITION_PCT"] = "35"
+os.environ["MAX_TOTAL_EXPOSURE_PCT"] = "35"
+os.environ["MAX_LOSS_PER_TRADE_PCT"] = "0.5"
+os.environ["MAX_DAILY_LOSS_PCT"] = "1.0"
+os.environ["MAX_ORDERS_PER_DAY"] = "5"
 
 import local_api
 from local_api import app
@@ -95,6 +100,8 @@ def main() -> None:
         assert portfolio_payload["total_exposure"] == 300.0
         assert portfolio_payload["total_exposure_pct"] == 30.0
         assert portfolio_payload["positions"][0]["account_exposure_pct"] == 30.0
+        assert portfolio_payload["risk_limits"]["max_position_pct"] == 35.0
+        assert portfolio_payload["risk_limits"]["max_total_exposure_pct"] == 35.0
 
         preview = client.post(
             "/paper/preview",
@@ -118,7 +125,7 @@ def main() -> None:
         assert "portfolio_total_exposure_limit" in blocked_preview["blockers"]
         assert "portfolio_existing_position" in blocked_preview["blockers"]
         assert "blocker_messages" in blocked_preview
-        assert any("above the 5.00% position limit" in item["message"] for item in blocked_preview["blocker_messages"])
+        assert any("above the 35.00% position limit" in item["message"] for item in blocked_preview["blocker_messages"])
         portfolio_risk = blocked_preview["agent_summary"]["risk"]["details"]["portfolio"]
         assert portfolio_risk["projected_position_exposure"] == 400.0
         assert portfolio_risk["projected_total_exposure"] == 400.0
