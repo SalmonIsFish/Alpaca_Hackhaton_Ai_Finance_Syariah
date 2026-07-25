@@ -147,6 +147,8 @@ cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
 ..\.venv\Scripts\python.exe test_local_api_smoke.py
 ..\.venv\Scripts\python.exe test_investment_committee.py
 ..\.venv\Scripts\python.exe test_stock_profile.py
+..\.venv\Scripts\python.exe test_market_overview.py
+..\.venv\Scripts\python.exe test_positions_api.py
 ..\.venv\Scripts\python.exe test_portfolio_risk_limits.py
 ..\.venv\Scripts\python.exe test_portfolio_store.py
 ..\.venv\Scripts\python.exe test_paper_execution_gates.py
@@ -227,6 +229,14 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `GET /investment-committee` aggregates latest watchlist candidates, committee statuses, blockers, pending approvals, submitted orders, portfolio exposure, and active risk limits.
   - this is read-only and intended to support a future Claude Code Investment Committee view without touching broker execution.
   - `test_investment_committee.py` verifies ready, alert, pending approval, and portfolio exposure fields.
+- Market overview backend contract was added on July 25, 2026:
+  - `GET /market-overview` summarizes saved watchlist scan health without triggering a new market-data scan.
+  - it returns watchlist coverage, ready/alert/data-error counts, data freshness/source counts, stale cache symbols, recent alert events, and portfolio exposure.
+  - `test_market_overview.py` verifies scan coverage, stale-cache detection, data health counts, and candidate buckets.
+- Positions backend contract was added on July 25, 2026:
+  - `GET /positions` returns flattened open positions with valuation, exposure percentages, risk-limit status, and max reduce quantity.
+  - this is read-only and intended to support a dedicated Positions page or position-management agent without touching broker execution.
+  - `test_positions_api.py` verifies exposure, valuation, and reduce eligibility fields.
 - Approval payload audit guard was added on July 25, 2026:
   - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
   - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.

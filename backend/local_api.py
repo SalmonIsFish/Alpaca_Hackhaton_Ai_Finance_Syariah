@@ -189,6 +189,189 @@ def portfolio_snapshot_with_exposure(connection: sqlite3.Connection) -> dict:
     return snapshot
 
 
+def positions_snapshot(connection: sqlite3.Connection) -> dict:
+    portfolio = portfolio_snapshot_with_exposure(connection)
+    limits = portfolio.get("risk_limits", {})
+    max_position_pct = float(limits.get("max_position_pct") or 0)
+    positions = []
+    for position in portfolio.get("positions", []):
+        quantity = round(float(position.get("quantity") or 0), 4)
+        account_exposure_pct = round(float(position.get("account_exposure_pct") or 0), 4)
+        valuation_status = position.get("valuation_status") or portfolio.get("valuation_status")
+        positions.append(
+            {
+                "symbol": position.get("symbol"),
+                "account_suffix": position.get("account_suffix"),
+                "account_type": position.get("account_type"),
+                "quantity": quantity,
+                "average_cost": position.get("average_cost"),
+                "cost_basis": position.get("cost_basis"),
+                "latest_price": position.get("latest_price"),
+                "price_source": position.get("price_source"),
+                "price_date": position.get("price_date"),
+                "market_value": position.get("market_value"),
+                "unrealized_pnl": position.get("unrealized_pnl"),
+                "unrealized_pnl_pct": position.get("unrealized_pnl_pct"),
+                "realized_pnl": position.get("realized_pnl"),
+                "exposure_value": position.get("exposure_value"),
+                "account_exposure_pct": account_exposure_pct,
+                "exposure_weight_pct": position.get("exposure_weight_pct"),
+                "position_limit_status": "PASS" if account_exposure_pct <= max_position_pct else "BREACH",
+                "valuation_status": valuation_status,
+                "valuation_error": position.get("valuation_error"),
+                "reduce_eligible": quantity > 0,
+                "max_reduce_quantity": quantity,
+                "updated_at": position.get("updated_at"),
+            }
+        )
+    return {
+        "status": "OK",
+        "positions": positions,
+        "position_count": len(positions),
+        "paper_account_equity": portfolio.get("paper_account_equity"),
+        "total_exposure": portfolio.get("total_exposure"),
+        "total_exposure_pct": portfolio.get("total_exposure_pct"),
+        "total_exposure_status": "PASS"
+        if float(portfolio.get("total_exposure_pct") or 0) <= float(limits.get("max_total_exposure_pct") or 0)
+        else "BREACH",
+        "risk_limits": limits,
+        "valuation_status": portfolio.get("valuation_status"),
+        "valuation_errors": portfolio.get("valuation_errors", []),
+        "updated_at": portfolio.get("updated_at"),
+    }
+
+
+def hours_since_iso(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
+
+
+def increment_count(counts: dict, key: str | None) -> None:
+    label = key or "unknown"
+    counts[label] = counts.get(label, 0) + 1
+
+
+def compact_market_candidate(row: dict) -> dict:
+    item = row.get("payload") or {}
+    return {
+        "symbol": row.get("symbol") or item.get("symbol"),
+        "watch_status": row.get("watch_status") or item.get("watch_status"),
+        "alert_status": row.get("alert_status") or item.get("alert_status"),
+        "ready_for_approval": bool(row.get("ready_for_approval") or item.get("ready_for_approval")),
+        "price": row.get("price") if row.get("price") is not None else item.get("price"),
+        "trigger_price": row.get("trigger_price") if row.get("trigger_price") is not None else item.get("trigger_price"),
+        "breakout_gap_pct": row.get("breakout_gap_pct") if row.get("breakout_gap_pct") is not None else item.get("breakout_gap_pct"),
+        "distance_to_trigger": item.get("distance_to_trigger"),
+        "shariah_status": item.get("shariah_status"),
+        "quant_signal": item.get("quant_signal"),
+        "risk_status": item.get("risk_status"),
+        "price_source": item.get("price_source"),
+        "data_freshness": item.get("data_freshness"),
+        "cache_age_hours": item.get("cache_age_hours"),
+        "bars": item.get("bars"),
+        "blockers": item.get("blockers", []),
+        "latest_scan": {
+            "scan_id": row.get("scan_id"),
+            "scanned_at": row.get("scanned_at"),
+            "age_hours": hours_since_iso(row.get("scanned_at")),
+            "event_status": row.get("event_status"),
+        },
+    }
+
+
+def market_overview_snapshot(connection: sqlite3.Connection, *, stale_cache_hours: float = 24.0) -> dict:
+    settings = load_settings()
+    watchlist = get_watchlist_settings(connection)
+    symbols = watchlist["symbols"]
+    latest_results = list_latest_scan_results(connection, symbols=symbols, limit=200)
+    result_symbols = {row.get("symbol") for row in latest_results}
+    candidates = [compact_market_candidate(row) for row in latest_results]
+    portfolio = portfolio_snapshot_with_exposure(connection)
+    freshness_counts = {}
+    source_counts = {}
+    status_counts = {
+        "ready": 0,
+        "alerts": 0,
+        "near_breakout": 0,
+        "blocked": 0,
+        "data_errors": 0,
+        "not_ready": 0,
+    }
+    stale_cache_symbols = []
+    for candidate in candidates:
+        watch_status = candidate.get("watch_status")
+        if candidate.get("ready_for_approval"):
+            status_counts["ready"] += 1
+        if candidate.get("alert_status") == "ALERT":
+            status_counts["alerts"] += 1
+        if watch_status == "NEAR_BREAKOUT":
+            status_counts["near_breakout"] += 1
+        elif watch_status == "BLOCKED":
+            status_counts["blocked"] += 1
+        elif watch_status == "DATA_ERROR":
+            status_counts["data_errors"] += 1
+        elif watch_status == "NOT_READY":
+            status_counts["not_ready"] += 1
+        increment_count(freshness_counts, candidate.get("data_freshness"))
+        increment_count(source_counts, candidate.get("price_source"))
+        cache_age = candidate.get("cache_age_hours")
+        if cache_age is not None and float(cache_age) > stale_cache_hours:
+            stale_cache_symbols.append(candidate["symbol"])
+
+    latest_scan_times = [candidate["latest_scan"]["scanned_at"] for candidate in candidates if candidate["latest_scan"]["scanned_at"]]
+    latest_scan_at = max(latest_scan_times) if latest_scan_times else None
+    unscanned_symbols = [symbol for symbol in symbols if symbol not in result_symbols]
+    ready_candidates = [candidate for candidate in candidates if candidate["ready_for_approval"]]
+    alert_candidates = [candidate for candidate in candidates if candidate.get("alert_status") == "ALERT"]
+    data_error_candidates = [candidate for candidate in candidates if candidate.get("watch_status") == "DATA_ERROR"]
+    return {
+        "status": "OK",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "trading_mode": settings.trading_mode,
+        "broker_submission": broker_submission_configured(settings),
+        "paper_execution_enabled": settings.paper_execution_enabled,
+        "watchlist": {
+            "symbols": symbols,
+            "count": len(symbols),
+            "alert_threshold_pct": watchlist["alert_threshold_pct"],
+            "updated_at": watchlist["updated_at"],
+            "unscanned_symbols": unscanned_symbols,
+        },
+        "latest_scan": {
+            "scanned_at": latest_scan_at,
+            "age_hours": hours_since_iso(latest_scan_at),
+            "scanned_count": len(candidates),
+            "coverage_pct": round((len(candidates) / len(symbols)) * 100, 4) if symbols else 0,
+        },
+        "counts": status_counts,
+        "data_health": {
+            "freshness_counts": freshness_counts,
+            "source_counts": source_counts,
+            "stale_cache_hours": stale_cache_hours,
+            "stale_cache_symbols": stale_cache_symbols,
+        },
+        "portfolio": {
+            "open_positions": portfolio.get("position_count", 0),
+            "valuation_status": portfolio.get("valuation_status"),
+            "total_exposure": portfolio.get("total_exposure"),
+            "total_exposure_pct": portfolio.get("total_exposure_pct"),
+            "paper_account_equity": portfolio.get("paper_account_equity"),
+        },
+        "risk_limits": portfolio.get("risk_limits", risk_limits_from_settings(settings)),
+        "ready_candidates": ready_candidates[:10],
+        "alert_candidates": alert_candidates[:10],
+        "data_error_candidates": data_error_candidates[:10],
+        "recent_alert_events": list_alert_events(connection, limit=10),
+    }
+
+
 def stock_profile_snapshot(connection: sqlite3.Connection, symbol: str) -> dict:
     normalized_symbol = symbol.strip().upper()
     settings = load_settings()
@@ -597,6 +780,7 @@ def home() -> dict:
             "/paper/status",
             "/moomoo/status",
             "/market-data/{symbol}",
+            "/market-overview",
             "/stock/{symbol}/profile",
             "/investment-committee",
             "/watchlist",
@@ -607,6 +791,7 @@ def home() -> dict:
             "/paper/approval",
             "/paper/execute/{queue_id}",
             "/paper/reconcile/{queue_id}",
+            "/positions",
             "/portfolio",
             "/approvals",
             "/audit",
@@ -656,6 +841,15 @@ def market_data_status(symbol: str) -> dict:
     return summarize_history(symbol, days=365, min_bars=200, allow_fallback=True)
 
 
+@app.get("/market-overview")
+def market_overview(stale_cache_hours: float = 24.0) -> dict:
+    connection = db()
+    try:
+        return market_overview_snapshot(connection, stale_cache_hours=max(0.0, min(168.0, stale_cache_hours)))
+    finally:
+        connection.close()
+
+
 @app.get("/stock/{symbol}/profile")
 def stock_profile(symbol: str) -> dict:
     connection = db()
@@ -670,6 +864,15 @@ def investment_committee(limit: int = 50) -> dict:
     connection = db()
     try:
         return investment_committee_snapshot(connection, limit=limit)
+    finally:
+        connection.close()
+
+
+@app.get("/positions")
+def positions() -> dict:
+    connection = db()
+    try:
+        return positions_snapshot(connection)
     finally:
         connection.close()
 

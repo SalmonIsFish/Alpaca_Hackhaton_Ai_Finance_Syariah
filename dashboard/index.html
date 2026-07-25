@@ -206,6 +206,35 @@
       margin-bottom: 16px;
     }
 
+    .view-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px;
+      background: var(--bg);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+    }
+
+    .view-tab {
+      min-height: 36px;
+      color: var(--text);
+      border-color: var(--border);
+      background: transparent;
+    }
+
+    .view-tab.active {
+      color: var(--button-text);
+      border-color: transparent;
+      background: var(--accent);
+    }
+
     .stat {
       min-height: 92px;
       border: 1px solid var(--border);
@@ -279,16 +308,48 @@
       align-items: start;
     }
 
+    .app[data-active-view="all"] .layout {
+      grid-template-columns: 1fr;
+    }
+
+    .workspace-column {
+      display: grid;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .app[data-active-view="all"] .workspace-column {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .workspace-column.is-empty {
+      display: none;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
     .panel {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
       background: var(--panel);
       box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .app[data-active-view="all"] .panel {
+      min-height: 0;
+      padding: 14px;
     }
 
     .panel + .panel {
       margin-top: 16px;
+    }
+
+    .workspace-column .panel + .panel {
+      margin-top: 0;
     }
 
     .panel-head {
@@ -351,6 +412,10 @@
       background: var(--panel-2);
     }
 
+    .app[data-active-view="all"] .summary-card {
+      min-height: 74px;
+    }
+
     .summary-card strong {
       display: block;
       margin-top: 7px;
@@ -380,6 +445,14 @@
       gap: 8px;
       max-height: 320px;
       overflow: auto;
+    }
+
+    .app[data-active-view="all"] .queue-list,
+    .app[data-active-view="all"] .audit-list,
+    .app[data-active-view="all"] .paper-order-list,
+    .app[data-active-view="all"] .portfolio-list,
+    .app[data-active-view="all"] .opportunity-list {
+      max-height: 260px;
     }
 
     .queue-item, .audit-item {
@@ -567,8 +640,26 @@
       margin-top: 16px;
     }
 
+    .stock-profile-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
     @media (max-width: 980px) {
       .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .app[data-active-view="all"] .workspace-column {
         grid-template-columns: 1fr;
       }
 
@@ -595,7 +686,7 @@
         width: 100%;
       }
 
-      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls, .paper-order-grid, .paper-order-head, .portfolio-summary, .portfolio-row {
+      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls, .paper-order-grid, .paper-order-head, .portfolio-summary, .portfolio-row, .stock-profile-actions, .profile-grid {
         grid-template-columns: 1fr;
       }
 
@@ -654,9 +745,20 @@
       </div>
     </section>
 
+    <nav class="view-tabs" aria-label="Dashboard sections">
+      <button class="view-tab active" type="button" data-view-tab="ticket">Ticket</button>
+      <button class="view-tab" type="button" data-view-tab="opportunities">Opportunities</button>
+      <button class="view-tab" type="button" data-view-tab="stock">Stock Profile</button>
+      <button class="view-tab" type="button" data-view-tab="portfolio">Portfolio/Risk</button>
+      <button class="view-tab" type="button" data-view-tab="orders">Orders</button>
+      <button class="view-tab" type="button" data-view-tab="committee">Committee</button>
+      <button class="view-tab" type="button" data-view-tab="audit">Audit</button>
+      <button class="view-tab" type="button" data-view-tab="all">All</button>
+    </nav>
+
     <div class="layout">
-      <section>
-        <section class="panel">
+      <section class="workspace-column">
+        <section class="panel" data-view="ticket stock">
           <div class="panel-head">
             <h2>Agent Evaluation</h2>
             <span class="badge ok">Local Agents</span>
@@ -705,7 +807,7 @@
           </form>
         </section>
 
-        <section class="panel raw-panel">
+        <section class="panel raw-panel" data-view="opportunities">
           <div class="panel-head">
             <h2>Opportunities</h2>
             <span id="opportunityBadge" class="badge warn">Not scanned</span>
@@ -734,7 +836,21 @@
           <div id="opportunityList" class="opportunity-list"></div>
         </section>
 
-        <section class="panel raw-panel">
+        <section class="panel raw-panel" data-view="stock">
+          <div class="panel-head">
+            <h2>Stock Profile</h2>
+            <span id="stockProfileBadge" class="badge warn">Not checked</span>
+          </div>
+          <div class="stock-profile-actions">
+            <label>Profile Symbol
+              <input id="profileSymbol" value="AAPL" autocomplete="off">
+            </label>
+            <button id="loadProfileButton" class="secondary" type="button">Load Profile</button>
+          </div>
+          <div id="stockProfileSummary" class="profile-grid"></div>
+        </section>
+
+        <section class="panel raw-panel" data-view="ticket audit">
           <div class="panel-head">
             <h2>Raw Response</h2>
             <span id="responseBadge" class="badge warn">Idle</span>
@@ -743,8 +859,8 @@
         </section>
       </section>
 
-      <aside>
-        <section class="panel">
+      <aside class="workspace-column">
+        <section class="panel" data-view="ticket">
           <div class="panel-head">
             <h2>Agent Summary</h2>
             <span id="approvalBadge" class="badge warn">Awaiting Agents</span>
@@ -804,7 +920,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="committee">
           <div class="panel-head">
             <h2>Investment Committee</h2>
             <span id="committeeBadge" class="badge warn">Not checked</span>
@@ -812,7 +928,7 @@
           <div id="committeeList" class="audit-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="opportunities">
           <div class="panel-head">
             <h2>Current Alerts</h2>
             <span id="currentAlertCount" class="badge warn">0 Active</span>
@@ -820,7 +936,7 @@
           <div id="currentAlertList" class="audit-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="opportunities">
           <div class="panel-head">
             <h2>Event History</h2>
             <span id="alertHistoryCount" class="badge warn">0 Events</span>
@@ -828,7 +944,7 @@
           <div id="alertHistoryList" class="audit-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="orders">
           <div class="panel-head">
             <h2>Approval Queue</h2>
             <span id="approvalQueueCount" class="badge warn">0 Orders</span>
@@ -836,7 +952,7 @@
           <div id="approvalQueueList" class="queue-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="orders">
           <div class="panel-head">
             <h2>Paper Orders</h2>
             <span id="paperOrdersCount" class="badge warn">0 Orders</span>
@@ -844,7 +960,7 @@
           <div id="paperOrdersList" class="paper-order-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="ticket portfolio">
           <div class="panel-head">
             <h2>Risk Policy</h2>
             <span id="riskPolicyBadge" class="badge warn">Not checked</span>
@@ -859,7 +975,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="portfolio">
           <div class="panel-head">
             <h2>Portfolio/Risk</h2>
             <span id="portfolioBadge" class="badge warn">0 Positions</span>
@@ -873,7 +989,7 @@
           <div id="portfolioList" class="portfolio-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-view="audit">
           <div class="panel-head">
             <h2>Audit History</h2>
             <span id="auditCount" class="badge warn">0 Events</span>
@@ -949,9 +1065,17 @@
     const lastScanStatus = document.querySelector("#lastScanStatus");
     const opportunityList = document.querySelector("#opportunityList");
     const opportunityBadge = document.querySelector("#opportunityBadge");
+    const viewTabs = Array.from(document.querySelectorAll("[data-view-tab]"));
+    const viewPanels = Array.from(document.querySelectorAll("[data-view]"));
+    const workspaceColumns = Array.from(document.querySelectorAll(".workspace-column"));
+    const profileSymbol = document.querySelector("#profileSymbol");
+    const loadProfileButton = document.querySelector("#loadProfileButton");
+    const stockProfileBadge = document.querySelector("#stockProfileBadge");
+    const stockProfileSummary = document.querySelector("#stockProfileSummary");
     let currentPreview = null;
     let currentPortfolio = null;
-    let currentSystemMode = null;
+    let currentInvestmentCommittee = null;
+    let activeView = "ticket";
     let autoScanTimer = null;
     let scanInFlight = false;
 
@@ -976,6 +1100,30 @@
     function setBadge(element, text, state) {
       element.textContent = text;
       setClass(element, `badge ${state}`);
+    }
+
+    function panelMatchesView(panel, view) {
+      if (view === "all") {
+        return true;
+      }
+      return (panel.dataset.view || "").split(/\s+/).includes(view);
+    }
+
+    function setActiveView(view) {
+      activeView = view;
+      document.querySelector(".app").dataset.activeView = view;
+      viewTabs.forEach((button) => {
+        const active = button.dataset.viewTab === view;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+      viewPanels.forEach((panel) => {
+        panel.hidden = !panelMatchesView(panel, view);
+      });
+      workspaceColumns.forEach((column) => {
+        const hasVisiblePanel = Array.from(column.querySelectorAll("[data-view]")).some((panel) => !panel.hidden);
+        column.classList.toggle("is-empty", !hasVisiblePanel);
+      });
     }
 
     function formatLocalTime(value) {
@@ -1213,7 +1361,7 @@
       approveButton.disabled = !ready;
       rejectButton.disabled = false;
       rawOutput.textContent = JSON.stringify(payload, null, 2);
-      renderCommittee(currentSystemMode || { agent_team: [], effective_paper_execution_allowed: false }, preview);
+      renderCommittee(currentInvestmentCommittee, preview);
       renderRiskPolicy(preview);
     }
 
@@ -1223,7 +1371,7 @@
       rawOutput.textContent = "Checking local API...";
 
       try {
-        const [health, systemMode, paper, moomoo, approvals, audit, watchlist, alerts, portfolio] = await Promise.all([
+        const [health, systemMode, paper, moomoo, approvals, audit, watchlist, alerts, portfolio, investmentCommittee] = await Promise.all([
           getJson("/health"),
           getJson("/system/mode"),
           getJson("/paper/status"),
@@ -1233,6 +1381,7 @@
           getJson("/watchlist"),
           getJson("/opportunity-alerts"),
           getJson("/portfolio"),
+          getJson("/investment-committee"),
         ]);
 
         const connected = health.status === "ok";
@@ -1248,8 +1397,8 @@
         setStat(brokerSubmission, brokerOff ? "Disabled" : "Enabled", brokerOff ? "ok" : "bad");
         setStat(paperExecution, executionEnabled ? "Enabled" : "Locked", executionEnabled ? "warn" : "ok");
         setStat(moomooStatus, moomooReady ? "Paper Ready" : moomoo.status, moomooReady ? "ok" : "warn");
-        currentSystemMode = systemMode;
-        renderCommittee(systemMode, currentPreview);
+        currentInvestmentCommittee = investmentCommittee;
+        renderCommittee(investmentCommittee, currentPreview);
         applyWatchlistSettings(watchlist);
         renderAlertHistory(alerts);
         renderApprovalQueue(approvals);
@@ -1257,7 +1406,7 @@
         renderPortfolio(portfolio);
         renderAudit(audit);
         setBadge(responseBadge, "Status", "ok");
-        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo, watchlist, portfolio }, null, 2);
+        rawOutput.textContent = JSON.stringify({ health, system_mode: systemMode, paper, moomoo, watchlist, portfolio, investment_committee: investmentCommittee }, null, 2);
       } catch (error) {
         setStat(apiConnection, "Disconnected", "bad");
         setStat(paperMode, "Unknown", "warn");
@@ -1291,17 +1440,47 @@
       });
     }
 
-    function renderCommittee(systemMode, preview = null) {
+    function renderCommittee(committee, preview = null) {
       committeeList.replaceChildren();
-      const executionAllowed = systemMode.effective_paper_execution_allowed === true;
-      setBadge(committeeBadge, executionAllowed ? "Execution Allowed" : "Approval Mode", executionAllowed ? "warn" : "ok");
-      (systemMode.agent_team || []).forEach((agent) => {
-        const item = document.createElement("div");
-        item.className = "audit-item";
-        item.innerHTML = `<span class="badge ok">${agent.name}</span><code>${agent.role}</code>`;
-        committeeList.append(item);
+      if (!committee) {
+        setBadge(committeeBadge, "Not checked", "warn");
+        const empty = document.createElement("div");
+        empty.className = "audit-item";
+        empty.innerHTML = "<span class=\"badge warn\">Pending</span><code>Refresh status to load the backend committee aggregate.</code>";
+        committeeList.append(empty);
+        return;
+      }
+      const counts = committee.counts || {};
+      const ready = counts.ready_for_review || 0;
+      const alerts = counts.watch_alerts || 0;
+      const blocked = counts.blocked || 0;
+      const pending = counts.pending_approvals || 0;
+      setBadge(committeeBadge, `${ready} Ready / ${alerts} Alerts / ${pending} Pending`, ready ? "ok" : alerts || blocked ? "warn" : "ok");
+
+      const summary = document.createElement("div");
+      summary.className = "audit-item";
+      summary.innerHTML = `<span class="badge ${committee.broker_submission ? "bad" : "ok"}">${committee.trading_mode || "mode"}</span><code>Broker ${committee.broker_submission ? "configured" : "disabled"} | Execution ${committee.paper_execution_enabled ? "enabled" : "locked"} | Exposure ${formatPct(committee.portfolio?.total_exposure_pct)} / ${formatPct(committee.risk_limits?.max_total_exposure_pct)}</code>`;
+      committeeList.append(summary);
+
+      (committee.candidates || []).slice(0, 12).forEach((candidate) => {
+        const row = document.createElement("div");
+        row.className = "audit-item";
+        const status = candidate.committee_status || "WATCH";
+        const price = candidate.price == null ? "-" : `$${Number(candidate.price).toFixed(2)}`;
+        const trigger = candidate.trigger_price == null ? "-" : `$${Number(candidate.trigger_price).toFixed(2)}`;
+        const blockers = candidate.blockers?.length ? candidate.blockers.join(", ") : "clear";
+        const approvals = candidate.recent_approvals?.length ? ` | approvals ${candidate.recent_approvals.length}` : "";
+        row.innerHTML = `<span class="badge ${stateClass(status)}">${candidate.symbol || "-"}</span><code>${status} | ${price} vs trigger ${trigger} | Shariah ${candidate.shariah_status || "-"} | Quant ${candidate.quant_signal || "-"} | Risk ${candidate.risk_status || "-"} | ${blockers}${approvals}</code>`;
+        committeeList.append(row);
       });
-      const blockers = preview?.blockers || [];
+
+      (committee.pending_approvals || []).slice(0, 5).forEach((approval) => {
+        const row = document.createElement("div");
+        row.className = "audit-item";
+        row.innerHTML = `<span class="badge warn">Pending</span><code>${approval.symbol} ${approval.side} ${approval.quantity ?? "-"} @ ${approval.price ?? "-"} | Queue #${approval.id}</code>`;
+        committeeList.append(row);
+      });
+
       const portfolioRisk = preview?.agent_summary?.risk?.details?.portfolio;
       if (portfolioRisk) {
         const exposure = document.createElement("div");
@@ -1319,11 +1498,77 @@
       });
     }
 
+    function profileField(label, value, state = "") {
+      return `<div class="paper-order-field"><span>${label}</span><strong class="${state}">${value == null || value === "" ? "-" : value}</strong></div>`;
+    }
+
+    function renderStockProfile(profile) {
+      stockProfileSummary.replaceChildren();
+      if (!profile) {
+        setBadge(stockProfileBadge, "Not checked", "warn");
+        stockProfileSummary.innerHTML = profileField("Status", "Load a symbol");
+        return;
+      }
+      const shariah = profile.shariah || {};
+      const market = profile.market_data || {};
+      const latest = profile.latest_opportunity || {};
+      const latestPayload = latest.payload || {};
+      const portfolio = profile.portfolio || {};
+      const limits = profile.risk_limits || {};
+      const shariahOk = shariah.status === "PASS";
+      const errors = profile.errors || [];
+      setBadge(stockProfileBadge, errors.length ? "Partial Data" : `${profile.symbol} Profile`, errors.length ? "warn" : "ok");
+      stockProfileSummary.innerHTML = [
+        profileField("Symbol / Market", `${profile.symbol || "-"} / ${profile.market || "-"}`),
+        profileField("Shariah", `${shariah.status || "-"} ${shariah.provider ? `/ ${shariah.provider}` : ""}`, shariahOk ? "ok" : "bad"),
+        profileField("Latest Close", market.latest_close == null ? "-" : `${formatMoney(market.latest_close)} ${market.source || ""}`),
+        profileField("History", `${market.bars ?? "-"} bars | ${market.latest_date || "-"}`, Number(market.bars || 0) >= 200 ? "ok" : "warn"),
+        profileField("Opportunity", `${latestPayload.watch_status || latestPayload.decision || "-"} | Quant ${latestPayload.quant_signal || "-"}`, stateClass(latestPayload.watch_status || latestPayload.decision)),
+        profileField("Trigger", latestPayload.trigger_price == null ? "-" : `${formatMoney(latestPayload.trigger_price)} | Gap ${formatPct(latestPayload.breakout_gap_pct)}`),
+        profileField("Local Position", `${formatNumber(portfolio.quantity)} shares | ${formatMoney(portfolio.market_value)}`),
+        profileField("Exposure", `${formatPct(portfolio.account_exposure_pct)} / ${formatPct(limits.max_position_pct)}`, Number(portfolio.account_exposure_pct || 0) <= Number(limits.max_position_pct || 0) ? "ok" : "bad"),
+        profileField("Valuation", `${portfolio.valuation_status || "-"} | Unrealized ${formatMoney(portfolio.unrealized_pnl)}`),
+        profileField("Errors", errors.length ? errors.map((error) => `${error.section}:${error.reason}`).join(", ") : "None", errors.length ? "warn" : "ok"),
+      ].join("");
+    }
+
+    async function loadStockProfile() {
+      const symbol = profileSymbol.value.trim().toUpperCase() || document.querySelector("#symbol").value.trim().toUpperCase();
+      if (!symbol) {
+        setBadge(stockProfileBadge, "Symbol required", "bad");
+        return;
+      }
+      profileSymbol.value = symbol;
+      loadProfileButton.disabled = true;
+      setBadge(stockProfileBadge, "Loading", "warn");
+      try {
+        const profile = await getJson(`/stock/${encodeURIComponent(symbol)}/profile`);
+        renderStockProfile(profile);
+        setBadge(responseBadge, "Stock Profile", "ok");
+        rawOutput.textContent = JSON.stringify(profile, null, 2);
+      } catch (error) {
+        setBadge(stockProfileBadge, "Error", "bad");
+        setBadge(responseBadge, "Error", "bad");
+        rawOutput.textContent = String(error);
+      } finally {
+        loadProfileButton.disabled = false;
+      }
+    }
+
+    async function refreshCommitteePanel() {
+      try {
+        currentInvestmentCommittee = await getJson("/investment-committee");
+        renderCommittee(currentInvestmentCommittee, currentPreview);
+      } catch {
+        setBadge(committeeBadge, "Refresh failed", "bad");
+      }
+    }
+
     function stateClass(status) {
-      if (status === "READY") {
+      if (status === "READY" || status === "READY_FOR_REVIEW") {
         return "ok";
       }
-      if (status === "ALERT" || status === "NEAR_BREAKOUT") {
+      if (status === "ALERT" || status === "NEAR_BREAKOUT" || status === "WATCH_ALERT" || status === "WATCH") {
         return "warn";
       }
       if (status === "DATA_ERROR" || status === "BLOCKED") {
@@ -1631,6 +1876,7 @@
         renderPaperOrders(approvals);
         renderPortfolio(await getJson("/portfolio"));
         renderAudit(await getJson("/audit"));
+        await refreshCommitteePanel();
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);
@@ -1639,6 +1885,7 @@
 
     function usePositionForReduce(button) {
       document.querySelector("#symbol").value = button.dataset.reduceSymbol || "";
+      profileSymbol.value = button.dataset.reduceSymbol || "";
       document.querySelector("#side").value = "SELL";
       document.querySelector("#quantity").value = Math.max(1, Math.floor(Number(button.dataset.reduceQuantity || 1)));
       if (button.dataset.reducePrice) {
@@ -1674,6 +1921,7 @@
         renderCurrentAlerts(payload.items || []);
         renderAlertHistory(await getJson("/opportunity-alerts"));
         renderAudit(await getJson("/audit"));
+        await refreshCommitteePanel();
         if (payload.throttled) {
           const waitMinutes = Math.ceil((payload.wait_seconds || 0) / 60);
           setBadge(responseBadge, "Throttled", "warn");
@@ -1717,6 +1965,7 @@
         renderApprovalQueue(approvals);
         renderPaperOrders(approvals);
         renderAudit(await getJson("/audit"));
+        await refreshCommitteePanel();
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);
@@ -1770,6 +2019,7 @@
         renderApprovalQueue(approvals);
         renderPaperOrders(approvals);
         renderAudit(await getJson("/audit"));
+        await refreshCommitteePanel();
       } catch (error) {
         setBadge(responseBadge, "Error", "bad");
         rawOutput.textContent = String(error);
@@ -1801,12 +2051,27 @@
 
     const savedTheme = localStorage.getItem("amanah-theme");
     setTheme(savedTheme === "light" ? "light" : "dark");
+    setActiveView(activeView);
+    renderStockProfile(null);
+    viewTabs.forEach((button) => {
+      button.addEventListener("click", () => setActiveView(button.dataset.viewTab));
+    });
     themeToggle.addEventListener("click", () => {
       setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
     });
     refreshButton.addEventListener("click", refreshStatus);
     previewForm.addEventListener("submit", createPreview);
-    document.querySelector("#symbol").addEventListener("input", refreshExposureInputs);
+    document.querySelector("#symbol").addEventListener("input", () => {
+      refreshExposureInputs();
+      profileSymbol.value = document.querySelector("#symbol").value.trim().toUpperCase();
+    });
+    loadProfileButton.addEventListener("click", loadStockProfile);
+    profileSymbol.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadStockProfile();
+      }
+    });
     resetButton.addEventListener("click", resetTicket);
     saveWatchlistButton.addEventListener("click", async () => {
       setBadge(responseBadge, "Saving", "warn");
@@ -1844,6 +2109,7 @@
         return;
       }
       document.querySelector("#symbol").value = button.dataset.opportunitySymbol;
+      profileSymbol.value = button.dataset.opportunitySymbol;
       if (button.dataset.opportunityPrice) {
         document.querySelector("#price").value = Number(button.dataset.opportunityPrice).toFixed(2);
       }
