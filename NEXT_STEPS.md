@@ -149,6 +149,7 @@ cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
 ..\.venv\Scripts\python.exe test_stock_profile.py
 ..\.venv\Scripts\python.exe test_market_overview.py
 ..\.venv\Scripts\python.exe test_positions_api.py
+..\.venv\Scripts\python.exe test_execution_audit.py
 ..\.venv\Scripts\python.exe test_portfolio_risk_limits.py
 ..\.venv\Scripts\python.exe test_portfolio_store.py
 ..\.venv\Scripts\python.exe test_paper_execution_gates.py
@@ -237,6 +238,10 @@ Do not jump to autonomous paper mode until manual paper execution is reliable an
   - `GET /positions` returns flattened open positions with valuation, exposure percentages, risk-limit status, and max reduce quantity.
   - this is read-only and intended to support a dedicated Positions page or position-management agent without touching broker execution.
   - `test_positions_api.py` verifies exposure, valuation, and reduce eligibility fields.
+- Execution audit backend contract was added on July 25, 2026:
+  - `GET /execution-audit` returns queue integrity and broker safety status without mutating broker, approval, or portfolio state.
+  - it summarizes pending execution rows, broker-submitted rows, filled-but-unsynced rows, locked/rejected attempts, recent execution events, and approval payload audit failures.
+  - `test_execution_audit.py` verifies payload-audit failure detection, locked execution status, broker submission status, and missing fill-sync reporting.
 - Approval payload audit guard was added on July 25, 2026:
   - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
   - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.

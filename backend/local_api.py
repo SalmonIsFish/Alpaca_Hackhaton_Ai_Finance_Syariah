@@ -17,7 +17,7 @@ from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
-from paper_execution import execute_paper_order, reconcile_submitted_paper_order
+from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
 from portfolio_store import ensure_portfolio_tables, portfolio_snapshot, sync_filled_order
 from trading_modes import trading_mode_status
 from watchlist_store import (
@@ -369,6 +369,149 @@ def market_overview_snapshot(connection: sqlite3.Connection, *, stale_cache_hour
         "alert_candidates": alert_candidates[:10],
         "data_error_candidates": data_error_candidates[:10],
         "recent_alert_events": list_alert_events(connection, limit=10),
+    }
+
+
+def parse_json_object(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def filled_queue_ids(connection: sqlite3.Connection) -> set[int]:
+    ensure_portfolio_tables(connection)
+    rows = connection.execute("SELECT queue_id FROM paper_fills").fetchall()
+    return {int(row["queue_id"]) for row in rows}
+
+
+def latest_execution_events(connection: sqlite3.Connection, *, limit: int = 25) -> list[dict]:
+    rows = connection.execute(
+        """
+        SELECT id, created_at, event_type, payload
+        FROM audit_events
+        WHERE event_type IN ('paper_execution', 'paper_execution_rejected', 'paper_reconciliation')
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    events = []
+    for row in rows:
+        payload = parse_json_object(row["payload"])
+        events.append(
+            {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "event_type": row["event_type"],
+                "queue_id": payload.get("queue_id"),
+                "status": payload.get("status"),
+                "broker_submission": bool(payload.get("broker_submission")),
+                "message": payload.get("message") or payload.get("execution_message") or payload.get("reason"),
+            }
+        )
+    return events
+
+
+def execution_audit_row(approval: dict, synced_fills: set[int]) -> dict:
+    payload = parse_json_object(approval.get("payload"))
+    preview = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
+    quote = preview.get("quote_snapshot") if isinstance(preview.get("quote_snapshot"), dict) else None
+    broker_submission = payload.get("broker_submission") if isinstance(payload.get("broker_submission"), dict) else None
+    broker_reconciliation = payload.get("broker_reconciliation") if isinstance(payload.get("broker_reconciliation"), dict) else None
+    approval_audit = (
+        validate_approval_payload_for_execution(approval)
+        if approval.get("approval_status") == "APPROVED_PAPER_READY"
+        else {"status": "SKIPPED", "errors": []}
+    )
+    queue_id = int(approval["id"])
+    return {
+        "id": queue_id,
+        "created_at": approval.get("created_at"),
+        "symbol": approval.get("symbol"),
+        "side": approval.get("side"),
+        "quantity": approval.get("quantity"),
+        "price": approval.get("price"),
+        "notional": approval.get("notional"),
+        "approval_status": approval.get("approval_status"),
+        "execution_status": approval.get("execution_status"),
+        "execution_message": approval.get("execution_message"),
+        "executed_at": approval.get("executed_at"),
+        "execution_environment": approval.get("execution_environment"),
+        "broker_submission": bool(approval.get("broker_submission")),
+        "broker_order_id": broker_submission.get("broker_order_id") if broker_submission else None,
+        "broker_reconciliation_status": broker_reconciliation.get("status") if broker_reconciliation else None,
+        "broker_order_status": broker_reconciliation.get("order_status") if broker_reconciliation else None,
+        "fill_synced": queue_id in synced_fills,
+        "has_quote_snapshot": quote is not None,
+        "quote_snapshot_source": quote.get("source") if quote else None,
+        "shariah_status": approval.get("shariah_status"),
+        "quant_signal": approval.get("quant_signal"),
+        "risk_status": approval.get("risk_status"),
+        "approval_audit_status": approval_audit["status"],
+        "approval_audit_errors": approval_audit["errors"],
+    }
+
+
+def execution_audit_snapshot(connection: sqlite3.Connection, *, limit: int = 100) -> dict:
+    approvals = list_approvals(connection, limit=max(1, min(500, limit)))
+    synced_fills = filled_queue_ids(connection)
+    rows = [execution_audit_row(approval, synced_fills) for approval in approvals]
+    failed_payload_rows = [row for row in rows if row["approval_audit_status"] == "REJECT"]
+    pending_execution = [
+        row
+        for row in rows
+        if row["approval_status"] == "APPROVED_PAPER_READY"
+        and not row["broker_submission"]
+        and row["execution_status"] in {None, "NOT_EXECUTED"}
+    ]
+    locked_or_rejected = [
+        row
+        for row in rows
+        if row["execution_status"]
+        in {
+            "CONFIRMATION_REQUIRED",
+            "TRADING_MODE_BLOCKED",
+            "EXECUTION_LOCKED",
+            "SHARIAH_GATE_FAILED",
+            "RISK_GATE_FAILED",
+            "APPROVAL_AUDIT_FAILED",
+            "MOOMOO_NOT_READY",
+            "PORTFOLIO_SELL_GATE_FAILED",
+            "ADAPTER_NOT_CONFIGURED",
+            "NOT_APPROVED",
+        }
+    ]
+    missing_fill_sync = [
+        row
+        for row in rows
+        if row["broker_reconciliation_status"] == "BROKER_FILLED" and not row["fill_synced"]
+    ]
+    broker_submitted = [row for row in rows if row["broker_submission"]]
+    return {
+        "status": "OK",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "counts": {
+            "approval_rows": len(rows),
+            "pending_execution": len(pending_execution),
+            "broker_submitted": len(broker_submitted),
+            "broker_filled": sum(1 for row in rows if row["broker_reconciliation_status"] == "BROKER_FILLED"),
+            "fill_synced": sum(1 for row in rows if row["fill_synced"]),
+            "missing_fill_sync": len(missing_fill_sync),
+            "payload_audit_failures": len(failed_payload_rows),
+            "locked_or_rejected": len(locked_or_rejected),
+        },
+        "pending_execution": pending_execution[:25],
+        "broker_submitted": broker_submitted[:25],
+        "payload_audit_failures": failed_payload_rows[:25],
+        "locked_or_rejected": locked_or_rejected[:25],
+        "missing_fill_sync": missing_fill_sync[:25],
+        "recent_execution_events": latest_execution_events(connection),
     }
 
 
@@ -791,6 +934,7 @@ def home() -> dict:
             "/paper/approval",
             "/paper/execute/{queue_id}",
             "/paper/reconcile/{queue_id}",
+            "/execution-audit",
             "/positions",
             "/portfolio",
             "/approvals",
@@ -1074,6 +1218,15 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
 @app.post("/audit")
 def record_audit(event_type: str, payload: str) -> dict:
     return add_audit_event(event_type, {"payload": payload})
+
+
+@app.get("/execution-audit")
+def execution_audit(limit: int = 100) -> dict:
+    connection = db()
+    try:
+        return execution_audit_snapshot(connection, limit=limit)
+    finally:
+        connection.close()
 
 
 @app.get("/audit")

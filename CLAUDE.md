@@ -107,6 +107,7 @@ Focused tests:
 .\.venv\Scripts\python.exe backend/test_stock_profile.py
 .\.venv\Scripts\python.exe backend/test_market_overview.py
 .\.venv\Scripts\python.exe backend/test_positions_api.py
+.\.venv\Scripts\python.exe backend/test_execution_audit.py
 .\.venv\Scripts\python.exe backend/test_portfolio_store.py
 .\.venv\Scripts\python.exe backend/test_paper_execution_gates.py
 .\.venv\Scripts\python.exe backend/test_moomoo_paper_adapter.py
@@ -137,6 +138,7 @@ Focused tests:
 - `/investment-committee` provides a read-only aggregate of latest watchlist candidates, committee statuses, pending approvals, submitted orders, portfolio exposure, and risk limits.
 - `/market-overview` provides a read-only watchlist health contract with latest saved scan coverage, ready/alert/data-error counts, data freshness/source counts, stale cache symbols, recent alert events, and portfolio exposure.
 - `/positions` provides a read-only flattened positions contract with valuation, exposure status, and max reduce quantity for future position-management views or agents.
+- `/execution-audit` provides a read-only queue integrity and broker safety summary for pending execution, submitted orders, filled-but-unsynced orders, locked/rejected attempts, and approval payload audit failures.
 
 ## Good Next Tasks
 
@@ -145,4 +147,5 @@ Focused tests:
 3. Use `GET /market-overview` as the backend contract for a future market health or watchlist overview page.
 4. Use `GET /stock/{symbol}/profile` as the backend contract for a future stock detail page.
 5. Use `GET /positions` for a future dedicated Positions page or table with clearer partial-reduce controls.
-6. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+6. Use `GET /execution-audit` for a future Audit/Diagnostics page that surfaces queue safety, broker submission, reconciliation, and payload audit risks.
+7. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
