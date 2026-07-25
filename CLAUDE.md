@@ -4,7 +4,7 @@
 
 This repo is a local-first Shariah-compliant paper-trading workflow. It uses deterministic agents for Shariah, quant, and risk checks before anything can enter the approval queue. Broker submission is paper-only and must stay behind explicit gates.
 
-Latest shutdown checkpoint: `89b6e1b Add investment committee API contract` on July 25, 2026 02:03 +08:00. Git working tree was clean before this handoff update.
+Latest shutdown checkpoint: `994ed75 Add execution audit API contract` on July 25, 2026. Git working tree was clean before this handoff update.
 
 ## Safety Rules
 
@@ -142,10 +142,10 @@ Focused tests:
 
 ## Good Next Tasks
 
-1. Redesign the dashboard information architecture. The current single-page dashboard has too many stacked panels and requires too much scrolling. Claude Code should make this more user-friendly, likely with tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, Stock Profile, Investment Committee, and Audit/Diagnostics.
-2. Use `GET /investment-committee` as the backend contract for the Investment Committee view instead of re-aggregating data in the browser.
-3. Use `GET /market-overview` as the backend contract for a future market health or watchlist overview page.
-4. Use `GET /stock/{symbol}/profile` as the backend contract for a future stock detail page.
-5. Use `GET /positions` for a future dedicated Positions page or table with clearer partial-reduce controls.
-6. Use `GET /execution-audit` for a future Audit/Diagnostics page that surfaces queue safety, broker submission, reconciliation, and payload audit risks.
-7. Add a controlled SELL paper execution test after manually confirming Moomoo paper behavior.
+1. If continuing UI later, use existing tabbed dashboard work and backend contracts instead of rebuilding browser-side aggregates.
+2. Use `GET /market-overview` for market health/watchlist overview.
+3. Use `GET /investment-committee` for Investment Committee.
+4. Use `GET /stock/{symbol}/profile` for stock detail.
+5. Use `GET /positions` for position management and reduce controls.
+6. Use `GET /execution-audit` for Audit/Diagnostics and queue safety.
+7. Next technical backend task: add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior.

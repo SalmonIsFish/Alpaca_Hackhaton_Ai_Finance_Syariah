@@ -2,15 +2,18 @@
 
 ## Resume After Shutdown
 
-Last saved: July 25, 2026 02:03 +08:00, Asia/Kuala_Lumpur.
+Last saved: July 25, 2026, Asia/Kuala_Lumpur.
 
 What just worked:
 
-- Latest clean git checkpoint: `89b6e1b Add investment committee API contract`.
-- Backend technical hardening is saved through execution audit checks, reduce-only SELL guards, portfolio SELL fill integrity, stock profile API, and Investment Committee API.
+- Latest clean git checkpoint before this handoff update: `994ed75 Add execution audit API contract`.
+- Backend technical hardening is saved through execution audit checks, reduce-only SELL guards, portfolio SELL fill integrity, stock profile API, Investment Committee API, market overview API, positions API, and execution audit API.
 - Latest non-network test set passed:
   - `test_investment_committee.py`
   - `test_stock_profile.py`
+  - `test_market_overview.py`
+  - `test_positions_api.py`
+  - `test_execution_audit.py`
   - `test_local_api_smoke.py`
   - `test_portfolio_risk_limits.py`
   - `test_paper_execution_gates.py`
@@ -34,13 +37,14 @@ C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
 
 Recently completed build task:
 
-1. Added read-only `GET /investment-committee` for future Claude Code UI work.
-2. Added read-only `GET /stock/{symbol}/profile` for a future stock detail page.
-3. Hardened execution approval audits with row-vs-payload consistency checks.
-4. Added reduce-only SELL guards at execution time and portfolio sync time.
-5. Added configurable portfolio risk limits and mark-to-market exposure.
-6. Added quote snapshots to paper previews and approval payloads.
-7. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
+1. Added tabbed dashboard structure while keeping safety gates unchanged.
+2. Added read-only `GET /market-overview` for saved watchlist health and data freshness.
+3. Added read-only `GET /positions` for flattened position and reduce-eligibility state.
+4. Added read-only `GET /execution-audit` for queue integrity and broker safety state.
+5. Added read-only `GET /investment-committee` and `GET /stock/{symbol}/profile` contracts for UI/agent work.
+6. Hardened execution approval audits with row-vs-payload consistency checks.
+7. Added reduce-only SELL guards at execution time and portfolio sync time.
+8. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
 
 ## Current State
 
@@ -75,6 +79,9 @@ Working components:
 - Typed paper execution confirmation gate requiring `EXECUTE PAPER`.
 - Read-only Stock Profile API at `GET /stock/{symbol}/profile`.
 - Read-only Investment Committee API at `GET /investment-committee`.
+- Read-only Market Overview API at `GET /market-overview`.
+- Read-only Positions API at `GET /positions`.
+- Read-only Execution Audit API at `GET /execution-audit`.
 - Paper execution gate stack with fake and real adapter paths:
   - `approval` or `autonomous_paper` trading mode required
   - `PAPER_EXECUTION_ENABLED=true` required
@@ -173,15 +180,14 @@ Expected good signs:
 
 Next recommended build step:
 
-1. Claude Code UI pass:
-   - redesign the dashboard information architecture because the current single-page dashboard has too many stacked panels and too much scrolling
-   - use the new read-only `/investment-committee` and `/stock/{symbol}/profile` contracts
-   - likely split into tabs or sections for Order Ticket, Portfolio/Risk, Paper Orders, Opportunities, Stock Profile, Investment Committee, and Audit/Diagnostics
-
-2. Optional next backend phase:
-   - add a read-only market overview API
-   - add a dedicated positions API if Claude needs a cleaner table contract than `/portfolio`
-   - add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior
+1. Keep working technical first unless the user explicitly asks for UI.
+2. Add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior.
+3. If returning to UI, wire tabs to the existing backend contracts:
+   - `/market-overview`
+   - `/investment-committee`
+   - `/stock/{symbol}/profile`
+   - `/positions`
+   - `/execution-audit`
 
 Do not jump to autonomous paper mode until manual paper execution is reliable and fully audited.
 
