@@ -1,10 +1,34 @@
 """Read-only Moomoo OpenD status checks."""
 
+import socket
+
 from config import load_settings
+
+
+def _port_reachable(host: str, port: int, *, timeout: float = 1.5) -> bool:
+    """Cheap pre-check so a closed OpenD port fails in ~1.5s instead of the
+    minutes-long retry/backoff the moomoo SDK runs internally when a real
+    connection attempt is refused."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def check_moomoo_status() -> dict:
     settings = load_settings()
+    if not _port_reachable(settings.moomoo_host, settings.moomoo_port):
+        return {
+            "status": "unreachable",
+            "host": settings.moomoo_host,
+            "port": settings.moomoo_port,
+            "mode": settings.moomoo_mode,
+            "paper_account_ready": False,
+            "paper_execution_enabled": settings.paper_execution_enabled,
+            "broker_submission": False,
+            "reason": "moomoo_opend_not_listening",
+        }
     try:
         from moomoo import OpenSecTradeContext, TrdMarket
     except ModuleNotFoundError:

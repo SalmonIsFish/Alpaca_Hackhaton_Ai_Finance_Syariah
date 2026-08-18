@@ -21,6 +21,7 @@ from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
 from portfolio_store import ensure_portfolio_tables, open_position_quantity, portfolio_snapshot, sync_filled_order
 from shariah_candidate import build_shariah_candidate
+from shariah_trace import describe_approval
 from trading_modes import trading_mode_status
 from watchlist_store import (
     ensure_watchlist_tables,
@@ -1257,6 +1258,7 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
         shariah_override=shariah or None,
     )
     candidate["notional"] = preview.get("notional")
+    shariah_trace = describe_approval(symbol=candidate["symbol"], shariah=shariah, candidate=candidate)
     if preview.get("status") != "READY_FOR_APPROVAL":
         approval = {"status": "REJECT", "reason": "preview_not_ready_for_approval", "broker_submission": False}
     elif risk.get("status") != "PASS":
@@ -1265,6 +1267,7 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
         approval = approve_candidate(candidate, approved_by_user=request.approved)
     approval["broker_submission"] = False
     approval["paper_execution_enabled"] = settings.paper_execution_enabled
+    approval["shariah_trace"] = shariah_trace
     connection = db()
     try:
         queue_item = record_approval(connection, preview=preview, approval=approval, approved_by_user=request.approved)
