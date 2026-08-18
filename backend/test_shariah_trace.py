@@ -2,7 +2,7 @@
 in hackathon/alpaca-2026/SHARIAH_GATE_NOTES.md, for the underlying + structure
 gate decisions together."""
 
-from shariah_trace import build_shariah_trace
+from shariah_trace import build_shariah_trace, describe_approval
 
 
 def main() -> None:
@@ -53,6 +53,49 @@ def main() -> None:
         },
     )
     assert "structure=mystery -> REJECT (some_future_reason_not_yet_mapped)" in fallback_trace
+
+    # Account-level Riba exposure is part of the trace too, independent of
+    # the structure gate -- a margin account shows up even when the structure
+    # itself would have been fine.
+    margin_trace = build_shariah_trace(
+        symbol="AAPL",
+        shariah={"status": "PASS", "provider": "ZOYA", "reason": "COMPLIANT"},
+        option_structure={
+            "status": "PASS",
+            "reason": "covered_by_owned_shares",
+            "details": {"structure": "covered_call"},
+        },
+        account_shariah={
+            "status": "REJECT",
+            "reason": "margin_account_not_permitted",
+            "details": {"account_type": "MARGIN"},
+        },
+    )
+    assert "account=MARGIN -> REJECT" in margin_trace
+    assert "riba" in margin_trace.lower()
+
+    # describe_approval derives both gate verdicts itself from the same
+    # candidate shape shariah_candidate.build_shariah_candidate produces --
+    # callers (local_api.py) shouldn't need to know the gate internals.
+    approval_trace = describe_approval(
+        symbol="AAPL",
+        shariah={"status": "PASS", "provider": "ZOYA", "reason": "COMPLIANT"},
+        candidate={
+            "account_type": "CASH",
+            "option_structure": {"structure": "covered_call", "shares_held": 100, "contracts": 1},
+        },
+    )
+    assert "structure=covered_call -> PASS" in approval_trace
+    assert "account=CASH -> PASS" in approval_trace
+
+    # Equity-only candidate (no option_structure key at all) still traces.
+    equity_approval_trace = describe_approval(
+        symbol="AAPL",
+        shariah={"status": "PASS", "provider": "ZOYA", "reason": "COMPLIANT"},
+        candidate={"account_type": "CASH"},
+    )
+    assert "structure=" not in equity_approval_trace
+    assert "account=CASH -> PASS" in equity_approval_trace
 
     print("PASS: Shariah trace produces citation-backed, human-readable audit lines.")
 

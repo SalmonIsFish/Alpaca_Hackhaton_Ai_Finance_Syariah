@@ -23,8 +23,20 @@ STRUCTURE_RATIONALE = {
     "unknown_structure": "unrecognized structure, fails closed by policy",
 }
 
+ACCOUNT_RATIONALE = {
+    "cash_account_no_margin_exposure": "no standing riba exposure",
+    "margin_account_not_permitted": "margin capability is a standing riba exposure",
+    "unknown_account_type": "unrecognized account type, fails closed by policy",
+}
 
-def build_shariah_trace(*, symbol: str, shariah: dict, option_structure: dict | None = None) -> str:
+
+def build_shariah_trace(
+    *,
+    symbol: str,
+    shariah: dict,
+    option_structure: dict | None = None,
+    account_shariah: dict | None = None,
+) -> str:
     parts = [f"{symbol}: underlying={shariah.get('status')} ({shariah.get('provider')})"]
 
     if option_structure is not None:
@@ -37,4 +49,40 @@ def build_shariah_trace(*, symbol: str, shariah: dict, option_structure: dict | 
         else:
             parts.append(f"structure={structure_name} -> {status} ({reason})")
 
+    if account_shariah is not None:
+        account_type = (account_shariah.get("details") or {}).get("account_type", "unknown")
+        status = account_shariah.get("status")
+        reason = account_shariah.get("reason")
+        rationale = ACCOUNT_RATIONALE.get(reason)
+        if rationale:
+            parts.append(f"account={account_type} -> {status} ({rationale})")
+        else:
+            parts.append(f"account={account_type} -> {status} ({reason})")
+
     return ". ".join(parts) + "."
+
+
+def describe_approval(*, symbol: str, shariah: dict, candidate: dict) -> str:
+    """Build the full trace from the same candidate shape
+    shariah_candidate.build_shariah_candidate() produces, so callers (e.g.
+    local_api.py) never need to know option_structure_gate/account_shariah_gate
+    internals -- just pass the candidate and the shariah result through.
+    """
+    from agents.account_shariah_agent import evaluate_account
+    from agents.option_structure_agent import evaluate_option_structure
+
+    option_structure_input = candidate.get("option_structure")
+    option_structure_result = (
+        evaluate_option_structure(**option_structure_input) if option_structure_input is not None else None
+    )
+    account_type = candidate.get("account_type")
+    account_result = evaluate_account(account_type=account_type) if account_type is not None else None
+    if account_result is not None:
+        account_result = {**account_result, "details": {"account_type": account_type}}
+
+    return build_shariah_trace(
+        symbol=symbol,
+        shariah=shariah,
+        option_structure=option_structure_result,
+        account_shariah=account_result,
+    )

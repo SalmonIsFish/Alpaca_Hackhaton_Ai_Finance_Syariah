@@ -153,6 +153,20 @@ def check_under_collateralized_put_is_rejected() -> None:
     assert (ok.get("candidate") or {}).get("option_structure", {}).get("cash_collateral") == 45000.0
 
 
+def check_approval_response_carries_shariah_trace() -> None:
+    """The dashboard's Ticket tab reads this string directly -- don't lose it."""
+    local_api.check_alpaca_status = lambda: CASH_ACCOUNT
+    seed_shares(100)
+
+    approved = approve(covered_call_preview())["approval"]
+    assert "structure=covered_call -> PASS" in approved["shariah_trace"], approved
+    assert "account=CASH -> PASS" in approved["shariah_trace"], approved
+
+    seed_shares(0)
+    rejected = approve(covered_call_preview())["approval"]
+    assert "structure=covered_call -> REJECT" in rejected["shariah_trace"], rejected
+
+
 def check_equity_path_is_unchanged() -> None:
     """A plain equity approval must still work and carry no option structure."""
     local_api.check_alpaca_status = lambda: CASH_ACCOUNT
@@ -258,6 +272,7 @@ def main() -> None:
         check_covered_call_on_margin_account_is_rejected()
         check_uncovered_call_is_rejected()
         check_under_collateralized_put_is_rejected()
+        check_approval_response_carries_shariah_trace()
         check_equity_path_is_unchanged()
         check_preview_endpoint_carries_option_intent()
         check_option_intent_survives_into_the_queue()
