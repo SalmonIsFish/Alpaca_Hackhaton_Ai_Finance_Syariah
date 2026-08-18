@@ -20,6 +20,7 @@ def evaluate_candidate(
     shariah_override: dict | None = None,
     quant_override: dict | None = None,
     option_structure: dict | None = None,
+    asset_class: str = "equity",
 ) -> dict:
     normalized_symbol = symbol.strip().upper()
     normalized_side = side.strip().upper()
@@ -40,7 +41,11 @@ def evaluate_candidate(
     )
 
     blockers = []
-    if normalized_side != "BUY":
+    # Options are written by selling to open (covered call, cash-secured put)
+    # and closed by buying back -- the BUY-only restriction is an equity-only
+    # rule. Reduce-only SELL protection for equities lives in local_api.py's
+    # portfolio risk overlay, not here.
+    if normalized_side != "BUY" and asset_class != "option":
         blockers.append("only_buy_side_supported")
     if shariah["status"] != "PASS":
         blockers.append("shariah_rejected")

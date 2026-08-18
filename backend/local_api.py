@@ -855,8 +855,19 @@ def evaluate_preview_request(request: PaperPreviewRequest) -> dict:
         loss_per_trade_pct=request.loss_per_trade_pct,
         daily_loss_pct=request.daily_loss_pct,
         orders_today=request.orders_today,
+        asset_class=request.asset_class,
         **paper_test_overrides(request),
     )
+    if request.asset_class == "option":
+        # The equity position/exposure overlay below treats `quantity`/`price`
+        # as shares/share-price; for an option order those are contracts and
+        # premium, so applying it here would size a covered call as if it
+        # were an equity trade on the same notional (see CLAUDE.md Known
+        # limitations). Option-native sizing (ownership/collateral) happens
+        # at approval time via option_structure_gate/account_shariah_gate,
+        # which don't have this unit mismatch.
+        evaluation["blocker_messages"] = blocker_messages_for_evaluation(evaluation)
+        return evaluation
     connection = db()
     try:
         return apply_portfolio_risk_overlay(connection, request, evaluation)

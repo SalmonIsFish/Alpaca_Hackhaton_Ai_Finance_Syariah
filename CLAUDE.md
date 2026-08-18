@@ -138,6 +138,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_alpaca_market_data.py
 .\.venv\Scripts\python.exe backend\test_alpaca_execution_wiring.py
 .\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
+.\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_option_structure_gate.py
 .\.venv\Scripts\python.exe backend\test_account_shariah_gate.py
@@ -149,7 +150,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
 ```
 
-27 suites pass. Two fail for environmental reasons only and are **not** regressions:
+28 suites pass. Two fail for environmental reasons only and are **not** regressions:
 `test_moomoo.py` and `test_local_api_smoke.py` both try to reach Moomoo OpenD on
 `127.0.0.1:11111`, which isn't running, and retry until they hang or refuse.
 
@@ -175,8 +176,19 @@ individually:
    options P&L. Do not "fix" this by booking contracts as shares — that was a real bug.
 3. **No strategy layer exists.** Nothing calls `fetch_option_chain` to select a strike. The
    chain data is available; the decision logic is not written.
-4. **The end-to-end chain has never run against real Alpaca.** Every component is tested in
-   isolation; preview → approval → execute → fill → reconcile has not been exercised live.
+4. **The end-to-end chain has never run against real Alpaca.** `test_option_execution_smoke.py`
+   now exercises preview → approval → execute for a covered call, an unsupported strategy, a
+   margin account, and an under-collateralized cash-secured put — through the real FastAPI app,
+   with only the `alpaca_request` network seam mocked. That test is what found and fixed two real
+   bugs: `agent_coordinator.evaluate_candidate` unconditionally blocked any non-BUY side, which
+   made both Level 1 strategies (both are sell-to-open) unreachable from `/paper/preview` at all
+   (fixed with an `asset_class` param); and the portfolio risk overlay treated an option's
+   contracts/premium as if they were equity shares/share-price, producing nonsensical exposure
+   percentages that would reject almost any option order once a real position existed (fixed by
+   skipping that equity-specific overlay for `asset_class == "option"` — the option_structure_gate
+   and account_shariah_gate already provide correct option-native sizing). What's still open:
+   nobody has run this against the *real* Alpaca paper API with real credentials — only against a
+   mocked network seam.
 
 ## Style
 

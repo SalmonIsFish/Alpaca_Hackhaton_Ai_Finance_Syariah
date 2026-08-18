@@ -65,6 +65,44 @@ def main() -> None:
     assert "option_structure_rejected" in naked_call_blocked["blockers"]
     assert naked_call_blocked["agent_summary"]["option_structure"]["status"] == "REJECT"
 
+    # A covered call is written by SELLING to open -- the coordinator must not
+    # apply the equity-only "BUY side only" restriction to option orders.
+    covered_call_sell = evaluate_candidate(
+        symbol="AAPL",
+        side="SELL",
+        quantity=1,
+        price=3.50,
+        position_pct=1.0,
+        total_exposure_pct=1.0,
+        loss_per_trade_pct=0.1,
+        daily_loss_pct=0.1,
+        orders_today=0,
+        shariah_override=SHARIAH_PASS,
+        quant_override=QUANT_BUY,
+        asset_class="option",
+        option_structure={"structure": "covered_call", "shares_held": 100, "contracts": 1},
+    )
+    assert "only_buy_side_supported" not in covered_call_sell["blockers"]
+    assert covered_call_sell["decision"] == "READY_FOR_APPROVAL"
+
+    # The restriction still applies to plain equity SELL orders -- this
+    # coordinator isn't the reduce-only SELL gate (that's the portfolio risk
+    # overlay in local_api.py); it just shouldn't block options on side alone.
+    equity_sell_still_blocked = evaluate_candidate(
+        symbol="AAPL",
+        side="SELL",
+        quantity=1,
+        price=100.0,
+        position_pct=1.0,
+        total_exposure_pct=1.0,
+        loss_per_trade_pct=0.1,
+        daily_loss_pct=0.1,
+        orders_today=0,
+        shariah_override=SHARIAH_PASS,
+        quant_override=QUANT_BUY,
+    )
+    assert "only_buy_side_supported" in equity_sell_still_blocked["blockers"]
+
     print("PASS: agent_coordinator composes the option-structure gate additively.")
 
 
