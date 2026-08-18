@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from agent_coordinator import evaluate_candidate
 from agents.shariah_agent import detect_market, evaluate_shariah
+from alpaca_paper_adapter import ALPACA_ADAPTERS, check_alpaca_status
 from approval_queue import ensure_approval_queue, get_approval, list_approvals, record_approval
 from approval_workflow import approve_candidate
 from config import load_settings
@@ -18,7 +19,8 @@ from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
-from portfolio_store import ensure_portfolio_tables, portfolio_snapshot, sync_filled_order
+from portfolio_store import ensure_portfolio_tables, open_position_quantity, portfolio_snapshot, sync_filled_order
+from shariah_candidate import build_shariah_candidate
 from trading_modes import trading_mode_status
 from watchlist_store import (
     ensure_watchlist_tables,
@@ -54,7 +56,7 @@ def db() -> sqlite3.Connection:
 
 
 def broker_submission_configured(settings) -> bool:
-    return settings.paper_execution_enabled and settings.paper_execution_adapter in {"fake", "moomoo"}
+    return settings.paper_execution_enabled and settings.paper_execution_adapter in {"fake", "moomoo", "alpaca", "alpaca_mcp"}
 
 
 class PaperPreviewRequest(BaseModel):
@@ -68,6 +70,8 @@ class PaperPreviewRequest(BaseModel):
     daily_loss_pct: float = Field(ge=0)
     orders_today: int = Field(ge=0)
     test_fixture: bool = False
+    asset_class: str = "equity"
+    option_contract: dict | None = None
 
 
 class PaperApprovalRequest(BaseModel):
@@ -1173,9 +1177,47 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
             "blocker_messages": evaluation.get("blocker_messages", []),
             "agent_summary": evaluation["agent_summary"],
         }
+    preview["asset_class"] = request.asset_class
+    preview["option_contract"] = request.option_contract
 
     audit = add_audit_event("paper_preview", preview)
     return {"preview_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "preview": preview}
+
+
+def broker_account_context(connection, preview: dict) -> dict:
+    """Resolve the live broker facts the Shariah account/structure gates need.
+
+    Falls back to a cash, unleveraged, empty-position view for non-Alpaca adapters
+    so the legacy equity path behaves exactly as before; an option order on those
+    adapters reports UNKNOWN and therefore fails closed at the gate.
+    """
+    settings = load_settings()
+    is_option = str(preview.get("asset_class") or "equity").lower() == "option"
+    if settings.paper_execution_adapter not in ALPACA_ADAPTERS:
+        return {
+            "account_type": "UNKNOWN" if is_option else "CASH",
+            "shares_held": 0,
+            "cash_collateral": 0.0,
+            "uses_margin": False,
+        }
+
+    status = check_alpaca_status()
+    account_type = str(status.get("account_type") or "UNKNOWN").upper()
+    shares_held = open_position_quantity(
+        connection,
+        symbol=str(preview.get("symbol") or ""),
+        account_suffix=status.get("account_suffix"),
+    )
+    return {
+        "account_type": account_type,
+        "shares_held": int(shares_held or 0),
+        # Settled cash, never buying_power: margin leverage cannot back a
+        # cash-secured put.
+        "cash_collateral": float(status.get("cash") or 0.0),
+        # We cannot prove an individual order avoids borrowed funds on a margin
+        # account, so treat the account type as the conservative answer.
+        "uses_margin": account_type == "MARGIN",
+    }
 
 
 @app.post("/paper/approval")
@@ -1185,18 +1227,25 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
     shariah = preview.get("agent_summary", {}).get("shariah", preview.get("shariah", {}))
     risk = preview.get("agent_summary", {}).get("risk", preview.get("risk", {}))
     side = preview.get("side", "BUY")
-    candidate = {
-        "signal": str(side).upper() if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
-        "compliance": {
-            "status": "COMPLIANT" if shariah.get("status") == "PASS" else "REJECT",
-            "source": shariah.get("provider", "SHARIAH_AGENT"),
-        },
-        "symbol": preview.get("symbol"),
-        "side": side,
-        "quantity": preview.get("quantity"),
-        "price": preview.get("price"),
-        "notional": preview.get("notional"),
-    }
+    connection = db()
+    try:
+        account = broker_account_context(connection, preview)
+    finally:
+        connection.close()
+    candidate = build_shariah_candidate(
+        symbol=preview.get("symbol"),
+        side=side,
+        signal=str(side).upper() if preview.get("status") == "READY_FOR_APPROVAL" else "HOLD",
+        quantity=preview.get("quantity"),
+        price=preview.get("price"),
+        account_type=account["account_type"],
+        option_contract=preview.get("option_contract"),
+        shares_held=account["shares_held"],
+        cash_collateral=account["cash_collateral"],
+        uses_margin=account["uses_margin"],
+        shariah_override=shariah or None,
+    )
+    candidate["notional"] = preview.get("notional")
     if preview.get("status") != "READY_FOR_APPROVAL":
         approval = {"status": "REJECT", "reason": "preview_not_ready_for_approval", "broker_submission": False}
     elif risk.get("status") != "PASS":
