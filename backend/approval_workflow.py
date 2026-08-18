@@ -1,5 +1,7 @@
 """Approval-required paper workflow; broker submission remains opt-in."""
 
+from agents.account_shariah_agent import evaluate_account
+from agents.option_structure_agent import evaluate_option_structure
 from config import load_settings
 
 
@@ -16,6 +18,16 @@ def approve_candidate(candidate: dict, *, approved_by_user: bool) -> dict:
         return {"status": "REJECT", "reason": "sell_signal_required"}
     if candidate.get("compliance", {}).get("status") != "COMPLIANT":
         return {"status": "REJECT", "reason": "compliance_not_confirmed"}
+    account_type = candidate.get("account_type")
+    if account_type is not None:
+        account_result = evaluate_account(account_type=account_type)
+        if account_result["status"] != "PASS":
+            return {"status": "REJECT", "reason": account_result["reason"], "account_shariah": account_result}
+    option_structure = candidate.get("option_structure")
+    if option_structure is not None:
+        structure_result = evaluate_option_structure(**option_structure)
+        if structure_result["status"] != "PASS":
+            return {"status": "REJECT", "reason": "option_structure_rejected", "option_structure": structure_result}
     if not approved_by_user:
         return {"status": "PENDING_APPROVAL", "broker_submission": False}
     return {"status": "APPROVED_PAPER_READY", "broker_submission": False, "execution_environment": "SIMULATE", "candidate": candidate}

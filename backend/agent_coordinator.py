@@ -1,5 +1,6 @@
 """Coordinate local deterministic agents before paper-order approval."""
 
+from agents.option_structure_agent import evaluate_option_structure
 from agents.quant_agent import evaluate_quant
 from agents.risk_engine import evaluate_risk
 from agents.shariah_agent import evaluate_shariah
@@ -18,6 +19,7 @@ def evaluate_candidate(
     orders_today: int,
     shariah_override: dict | None = None,
     quant_override: dict | None = None,
+    option_structure: dict | None = None,
 ) -> dict:
     normalized_symbol = symbol.strip().upper()
     normalized_side = side.strip().upper()
@@ -33,6 +35,10 @@ def evaluate_candidate(
         orders_today=orders_today,
     )
 
+    option_structure_result = (
+        evaluate_option_structure(**option_structure) if option_structure is not None else None
+    )
+
     blockers = []
     if normalized_side != "BUY":
         blockers.append("only_buy_side_supported")
@@ -44,9 +50,18 @@ def evaluate_candidate(
         blockers.append("risk_rejected")
     if selected_price is None or selected_price <= 0:
         blockers.append("valid_price_required")
+    if option_structure_result is not None and option_structure_result["status"] != "PASS":
+        blockers.append("option_structure_rejected")
 
     decision = "READY_FOR_APPROVAL" if not blockers else "BLOCKED"
     notional = round(quantity * selected_price, 2) if selected_price else None
+    agent_summary = {
+        "shariah": shariah,
+        "quant": quant,
+        "risk": risk,
+    }
+    if option_structure_result is not None:
+        agent_summary["option_structure"] = option_structure_result
     return {
         "symbol": normalized_symbol,
         "side": normalized_side,
@@ -56,9 +71,5 @@ def evaluate_candidate(
         "decision": decision,
         "blockers": blockers,
         "broker_submission": False,
-        "agent_summary": {
-            "shariah": shariah,
-            "quant": quant,
-            "risk": risk,
-        },
+        "agent_summary": agent_summary,
     }
