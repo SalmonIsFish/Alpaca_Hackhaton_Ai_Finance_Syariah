@@ -5,3 +5,26 @@ __pycache__/
 backend/*.db
 backend/market_data_cache/
 tmp/
+
+# Local research vault and internal planning notes (not part of the deliverable)
+hackathon/
+llm-council-skill/
+
+# Git worktrees used during development
+.worktrees/
+
+# Local state
+backend/*.sqlite
+backend/*.sqlite3
+.pytest_cache/
+*.egg-info/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.bak
+*.orig
+*.rej
