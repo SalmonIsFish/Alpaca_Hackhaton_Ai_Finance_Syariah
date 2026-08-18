@@ -348,7 +348,7 @@ def main() -> None:
             "shariah": {
                 "agent": "shariah",
                 "market": "US",
-                "provider": "ZOYA",
+                "provider": "SEC_EDGAR",
                 "status": "PASS",
                 "symbol": "AAPL",
                 "reason": "COMPLIANT",
@@ -397,7 +397,7 @@ def main() -> None:
     assert ready_preview_payload["broker_submission"] is False
     assert ready_preview_payload["preview"]["status"] == "READY_FOR_APPROVAL"
     assert ready_preview_payload["preview"]["broker_submission"] is False
-    assert ready_preview_payload["preview"]["agent_summary"]["shariah"]["provider"] == "ZOYA"
+    assert ready_preview_payload["preview"]["agent_summary"]["shariah"]["provider"] == "SEC_EDGAR"
     assert ready_preview_payload["preview"]["quote_snapshot"]["symbol"] == "AAPL"
     assert ready_preview_payload["preview"]["quote_snapshot"]["latest_close"] == 333.74
     assert ready_preview_payload["preview"]["quote_snapshot"]["latest_date"] == "2026-07-21"

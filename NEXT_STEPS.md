@@ -97,6 +97,12 @@ not from a fresh check.
   FastAPI app with only the network seam mocked. Writing it found and fixed two real bugs: a
   side restriction that made both Level 1 strategies unreachable from `/paper/preview`, and a
   portfolio-overlay unit mismatch that treated contracts/premium as shares/share-price.
+- **What that test does not cover:** it sends `test_fixture: true`, so `paper_test_overrides`
+  in `local_api.py` supplies the company verdict as `provider: PAPER_TEST_FIXTURE` and the
+  Shariah screen is never invoked (verified: zero calls). The option-structure and account
+  gates *are* exercised; the company screen is not. That hook is gated on paper mode, approval
+  mode, execution enabled, and a whitelisted symbol, so it cannot fire in normal operation —
+  but "end to end" should be read as covering order mechanics, not company screening.
 
 **Integrity fixes**
 
@@ -112,11 +118,19 @@ not from a fresh check.
 
 ## What is broken or missing
 
-**1. The new screen is built but not routed.**
-`agents/shariah_agent.py` still imports `zoya_compliance.check_us_symbol`. The swap to
-`sec_edgar_screen.check_us_symbol` is a one-line change and the return shapes are compatible,
-but until it happens every gate decision is still running on randomized sandbox data. **This is
-the single highest-value line of code outstanding.**
+**1. Screening is live, but every call is uncached — and a second Zoya path remains.**
+`agents/shariah_agent.py` now routes the US path to `sec_edgar_screen.check_us_symbol` and
+reports `provider: SEC_EDGAR`. Gate decisions run on real filings; randomized sandbox data is
+out of the decision path. Two things follow:
+
+- **No cache, no throttle.** A screen is a live SEC fetch of up to ~4.7 MB taking ~0.7–2 s.
+  `/paper/preview` and `/stock/{symbol}/profile` now pay that on every call, and a repeated
+  lookup re-downloads. This is precisely what the screening store below fixes, and it is the
+  strongest argument for building it next.
+- **`us_strategy.py` still imports `zoya_compliance` directly.** It is CLI-only
+  (`check_us_strategy.py`) and not reachable from the API, but it is a second screening path
+  to a different provider — exactly what the "one screening record, two views" constraint
+  below forbids. Either route it through `agents.shariah_agent` or delete it.
 
 **2. The strategy layer has no endpoint.**
 `option_strategy.py` works and is tested, but nothing calls it over HTTP. A caller must supply
@@ -305,18 +319,16 @@ that way — 7 mutations against the screen, 12 against the strategy layer, all 
 
 ## Next steps, in order
 
-1. **Switch `agents/shariah_agent.py` to `sec_edgar_screen`.** One line. Until this lands, every
-   gate decision still runs on randomized sandbox data.
-2. **Resolve the margin-account blocker** above. Nothing can be approved until it is.
-3. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
+1. **Resolve the margin-account blocker** above. Nothing can be approved until it is.
+2. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
    before anything else depends on it working.
-4. **Design the screening store** (approach A above) — answer the three open questions first.
+3. **Design the screening store** (approach A above) — answer the three open questions first.
    The store comes before either surface; re-screening and the research view are both views
    over it.
-5. **Solve demo hosting.** Prove the deploy path early with a stub.
-6. **Expose the strategy layer** over HTTP, and `GET /stock/{symbol}/explain` plus a dashboard
+4. **Solve demo hosting.** Prove the deploy path early with a stub.
+5. **Expose the strategy layer** over HTTP, and `GET /stock/{symbol}/explain` plus a dashboard
    panel showing verdict → rule fired → fiqh basis with citation.
-7. **Clear the stale Moomoo-era position** before demoing the portfolio view.
+6. **Clear the stale Moomoo-era position** before demoing the portfolio view.
 
 ## Standing constraints
 

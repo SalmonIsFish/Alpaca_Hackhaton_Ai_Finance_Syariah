@@ -169,16 +169,18 @@ individually:
 
 ## Known limitations — read before claiming anything works
 
-1. **Zoya sandbox returns randomized data, and Zoya is still the live route.** With
-   `ZOYA_ENVIRONMENT=sandbox`, JPM and BAC screen `COMPLIANT` while AAPL and KO screen
-   `NON_COMPLIANT`. Any demo or claim about compliance is meaningless while this is the
-   route. `sec_edgar_screen.check_us_symbol` is the replacement — a self-built SC Malaysia
-   two-tier screen off free SEC EDGAR filings, drop-in compatible with
-   `zoya_compliance.check_us_symbol` — but `agents/shariah_agent.py` **has not been
-   switched to it yet**; that one-line routing change is still outstanding. Read the
-   module docstring before trusting a verdict: business activity is approximated by SIC
-   code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
+1. **US screening is live on SEC EDGAR, and every call is uncached.** `agents/shariah_agent.py`
+   routes the US path to `sec_edgar_screen.check_us_symbol`, reporting `provider: SEC_EDGAR`.
+   Zoya is no longer in the US path; `zoya_compliance.py` remains only for reference, and
+   `us_strategy.py` still imports it directly (a second screening path — see NEXT_STEPS.md).
+   Read the module docstring before trusting a verdict: business activity is approximated by
+   SIC code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
    are overstated. Both approximations err toward rejection.
+
+   **Cost:** a screen is a live SEC fetch of up to ~4.7 MB and takes roughly 0.7–2 s, with no
+   cache and no rate throttle. `/paper/preview` and `/stock/{symbol}/profile` now carry that
+   on every call. The screening store in NEXT_STEPS.md is what fixes it. Tests are unaffected
+   — they supply a `shariah_override` or swap the `sec_request` seam, and none reach SEC.
 2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
    shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
    diverts option fills to `paper_fills` under the OCC symbol and returns

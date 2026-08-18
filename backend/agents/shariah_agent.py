@@ -4,7 +4,7 @@ This agent is deterministic and fail-closed. It does not use an LLM.
 """
 
 from shariah_gate import check_symbol
-from zoya_compliance import check_us_symbol
+from sec_edgar_screen import check_us_symbol
 
 
 def detect_market(symbol: str) -> str:
@@ -34,7 +34,7 @@ def _evaluate_us(symbol: str) -> dict:
     return {
         "agent": "shariah",
         "market": "US",
-        "provider": "ZOYA",
+        "provider": "SEC_EDGAR",
         "status": status,
         "symbol": symbol,
         "reason": result.get("reason") or result.get("status"),
