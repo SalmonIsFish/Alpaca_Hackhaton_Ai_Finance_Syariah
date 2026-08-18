@@ -178,22 +178,73 @@ May and November). It is a documented gap, not a feature invention.
   price ≥ cost on the effective date → must dispose; price < cost → may hold until dividends +
   market value reach cost; dividends/gains before the effective date → keep; after it → owed to
   baitulmal/charity.
-- **Re-screening held positions is the piece to design first.** Highest value, no LLM risk,
-  directly implements the documented gap.
+- **Both surfaces are in scope**: the position lifecycle above, *and* a pre-purchase research
+  view for companies you do not own yet. Its universe is the watchlist, pre-warmed on a
+  schedule, **plus** on-demand lookup of any US ticker.
+
+- **Build the screening store first; both surfaces are views over it.** This replaces the
+  earlier plan of building re-screening as a feature in its own right. The two surfaces need
+  the same expensive artefact — run the screen over a set of symbols, cache it, keep it dated —
+  so it is built once:
+
+  | from the store | feeds |
+  |---|---|
+  | latest verdict + evidence | pre-purchase research view |
+  | verdict changed vs. the previous run | re-screen alert, and the **effective date** |
+  | margin to the 33% line | the colour, on both surfaces |
+
+- **Storage: two layers** (approach A of three considered).
+  1. **Raw EDGAR cache** — the `companyfacts` payload per CIK on disk with a TTL, mirroring
+     `market_data_cache/`. Measured: **3.61 MB for AAPL, 4.66 MB for MSFT**, so a 30-symbol
+     daily sweep would re-download well over 100 MB of data that only changes when a filing
+     lands, i.e. quarterly. This layer exists solely to avoid re-fetching.
+  2. **`shariah_screens` table** in `paper_trading.db`, **append-only** — symbol, screened_at,
+     status, deciding tier, report_date, both ratios, evidence JSON. Follows the existing
+     `ensure_*_tables` / `CREATE TABLE IF NOT EXISTS` pattern in `portfolio_store.py` and
+     `watchlist_store.py`.
+
+  Append-only rather than overwrite-in-place because re-screening must detect *change*, which
+  needs the previous verdict to compare against — and that comparison is exactly what produces
+  the effective date. SQLite rather than JSON-per-symbol because the position lifecycle is a
+  **join**: *"which symbols do I hold whose latest verdict just flipped?"* Positions already
+  live in that database.
+
+  Rejected: a file-based store matching `market_data_cache` (every cross-symbol question becomes
+  a full scan, and a sweep has no transaction protecting concurrent writes), and re-fetching on
+  every sweep (wasteful against data that changes quarterly).
+
+### Constraints to hold to
+
+1. **One screening record, two views — never two screening paths.** If browsing and re-screening
+   each invoke the screen their own way they will eventually disagree about the same company,
+   with no way to tell which is right.
+2. **The pre-purchase colour must never imply permission.** A non-compliant company is not "red
+   because risky" — it is not buyable, and the gate says so regardless of colour. That surface
+   needs the binary verdict as its primary badge, colour strictly secondary.
+3. **Do not use one traffic light for two meanings.** Pre-purchase yellow would mean "thin
+   evidence"; position yellow means "watch this". Same dot, different claim — that is how
+   "yellow means trade it anyway" gets back in. Preference: reserve traffic lights for
+   *required action* only, and let the research view show the actual margin and evidence, which
+   `sec_edgar_screen` already returns. A colour compresses evidence into a dot, and this
+   project's thesis is that it *proves* rather than asserts.
 
 ### Open questions — resolve these before designing
 
-1. **Is purification tracking in scope?** Computing "you owe $X to charity" requires cost basis
-   and dividend history per position over time, which `portfolio_store` does not track today.
-   It is the biggest scope fork in the design, and probably where the judging marks are, since
+1. **Is purification tracking in scope?** Smaller than first assessed: `paper_positions` already
+   carries `average_cost` and `cost_basis`, so the missing input is **dividend history**, not
+   cost basis. Still the biggest scope fork, and probably where the judging marks are, since
    almost nothing on the market implements it.
-2. **Is there also a discovery/research rating?** The agreed framing colours positions you
-   hold. A separate question is whether users browse a "how compliant is this company" rating
-   *before* buying. That pulls the design toward a research surface rather than portfolio
-   state — genuinely different architecture. Not yet answered.
-3. **What triggers a re-screen?** SC says twice yearly, which is too slow to demo. Likely
-   on-demand plus a daily sweep, but the *effective date* semantics need to be pinned down:
-   the date SC would have reclassified, or the date we noticed?
+2. **What triggers a re-screen?** SC says twice yearly, which is too slow to demo. Likely
+   on-demand plus a daily sweep, but the *effective date* semantics need pinning down: the date
+   SC would have reclassified, or the date we noticed?
+3. **What is the raw cache TTL, and what invalidates it?** A flat 24h is simplest; checking the
+   `submissions` endpoint for a newer filing is more correct and costs one small request.
+
+### Known gap to fix as part of this
+
+`sec_request` has **no throttle**. SEC's guidance is a maximum of 10 requests/second and
+reasonable use overall. A watchlist sweep is the first thing that will make sustained requests,
+so the throttle belongs with this work — a robustness and politeness fix, not an optimisation.
 
 ### Sketched, deliberately not designed yet
 
@@ -259,7 +310,9 @@ that way — 7 mutations against the screen, 12 against the strategy layer, all 
 2. **Resolve the margin-account blocker** above. Nothing can be approved until it is.
 3. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
    before anything else depends on it working.
-4. **Design the re-screening subsystem** — answer the three open questions above first.
+4. **Design the screening store** (approach A above) — answer the three open questions first.
+   The store comes before either surface; re-screening and the research view are both views
+   over it.
 5. **Solve demo hosting.** Prove the deploy path early with a stub.
 6. **Expose the strategy layer** over HTTP, and `GET /stock/{symbol}/explain` plus a dashboard
    panel showing verdict → rule fired → fiqh basis with citation.
