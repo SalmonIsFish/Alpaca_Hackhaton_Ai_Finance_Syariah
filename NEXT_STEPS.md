@@ -1,6 +1,6 @@
 # Amanah Trader — Current State and Next Steps
 
-Last updated: August 18, 2026 (Asia/Kuala_Lumpur).
+Last updated: August 19, 2026 (Asia/Kuala_Lumpur).
 
 Read `CLAUDE.md` for architecture and safety rules. This file is the running status: what
 works, what doesn't, and what to do next.
@@ -8,8 +8,8 @@ works, what doesn't, and what to do next.
 ## Where the project is
 
 Amanah Trader is a local-first Shariah-compliant paper-trading control system on **Alpaca**.
-The broker adapter, market data, gate chain, and approval flow are built and tested. The
-compliance data feeding the gates is not yet real, and no trade has run end to end.
+The broker adapter, market data, gate chain, approval flow, real Shariah screening, and option
+strike selection are all built and tested. No trade has run end to end against the real broker.
 
 Current mode:
 
@@ -20,7 +20,60 @@ Current mode:
 
 Alpaca paper account in use: suffix `0TCX`, `MARGIN`, options trading level 3.
 
+## ⚠ Blocker to resolve before any live demo
+
+**The configured paper account is `MARGIN`, and `account_shariah_gate` rejects margin accounts
+outright — for every order, including plain equity.** The gate is doing exactly what it was
+designed to do: *"carrying margin capability at all is a standing Riba exposure regardless of
+whether a given order draws on it."* But it means that on account `0TCX`, every approval
+returns `margin_account_not_permitted` and nothing can ever be traded.
+
+This has not been hit yet only because no trade has run end to end. It will be the first thing
+that happens when one does. Options are:
+
+1. Provision an Alpaca paper account configured as **CASH** and point `.env` at it. Preferred —
+   it satisfies the gate honestly, and a cash account is what the whole design assumes.
+2. Confirm whether Alpaca even offers a cash paper account. If it does not, this needs a
+   documented, scholar-reviewable decision about what `account_type` the system should treat a
+   paper margin account as — **not** a code change that weakens the gate.
+
+Do not "fix" this by relaxing `account_shariah_gate`. Verify the live account type first with
+`check_config.py` / `check_alpaca_status`; the `MARGIN` value above comes from this document,
+not from a fresh check.
+
 ## What works
+
+**Shariah screening — real data** — `sec_edgar_screen.py` *(new, this session)*
+
+- Self-built two-tier screen off free SEC EDGAR filings; no API key, no vendor.
+- Tier 1 business activity by SIC code, short-circuiting before any ratio is fetched. Tier 2
+  interest-bearing debt / total assets and conventional cash / total assets, each strictly
+  under 33%.
+- Ratios anchor on the **latest annual** filing, and every component must be tagged at that
+  exact balance-sheet date — components are never borrowed across periods.
+- Fails closed: unmapped ticker, fetch error, missing annual anchor, or an unrecognisable cash
+  tag all return UNKNOWN/ERROR rather than a guessed COMPLIANT.
+- Live results: AAPL COMPLIANT (debt 27.5%, cash 15.2%), JPM NON_COMPLIANT (SIC 6021), KO
+  NON_COMPLIANT (debt 40.2%), MO NON_COMPLIANT (SIC 2111), MSFT COMPLIANT, TSLA COMPLIANT but
+  at 32.0% cash — one point from failing.
+
+  **Naming note:** earlier plans called this "the AAOIFI screen". What is implemented is the
+  **SC Malaysia / SAC** methodology, because that is what
+  `docs/shariah-policy/screening-criteria-breakdown.md` actually specifies. They are different
+  standards — AAOIFI ratios are denominated on market capitalisation, SC on total assets. The
+  doc was followed; the old name was wrong.
+
+**Option strike selection** — `option_strategy.py` *(new, this session)*
+
+- Covered call and cash-secured put, both Level 1, both sell-to-open.
+- Rule: 1–7 DTE, then the strike closest to **4% OTM inside a 2–7% band**, filtered for a live
+  bid, spread ≤15% of mid, a minimum premium, and a standard 100-share multiplier. Sized from
+  owned shares or settled cash; walks down the ranking when the top strike cannot be secured.
+- Emits an `option_contract` that drops straight into `build_shariah_candidate`, plus a
+  `rationale` string narrating the choice for the demo.
+- No Greeks are available on this Alpaca tier, which is why the rule is moneyness-based rather
+  than delta-based. A fixed band is also reproducible where a delta surface would not be.
+- `check_option_strategy.py` drives it live from the CLI without touching `local_api.py`.
 
 **Broker adapter** — `alpaca_paper_adapter.py`
 
@@ -36,13 +89,14 @@ Alpaca paper account in use: suffix `0TCX`, `MARGIN`, options trading level 3.
 - Automatic IEX fallback when the plan cannot query recent SIP data
 - Tiingo retained as a working fallback provider
 
-**Gate chain** — merged from `feature/shariah-options-gate`
+**Gate chain**
 
 - `shariah_gate` (company), `option_structure_gate` (contract), `account_shariah_gate` (Riba)
 - Single entry point: `shariah_candidate.build_shariah_candidate()`
-- Wired into `POST /paper/approval`; a covered call on a MARGIN account is now rejected with
-  `margin_account_not_permitted`, and an under-collateralized put with
-  `option_structure_rejected`
+- `test_option_execution_smoke.py` exercises preview → approval → execute through the real
+  FastAPI app with only the network seam mocked. Writing it found and fixed two real bugs: a
+  side restriction that made both Level 1 strategies unreachable from `/paper/preview`, and a
+  portfolio-overlay unit mismatch that treated contracts/premium as shares/share-price.
 
 **Integrity fixes**
 
@@ -53,36 +107,106 @@ Alpaca paper account in use: suffix `0TCX`, `MARGIN`, options trading level 3.
 
 **Repo hygiene**
 
-- Runs from a clean clone with no `.env` and no private vault: Shariah universe and policy
-  notes resolve to committed in-repo copies (`data/`, `docs/`)
+- Runs from a clean clone with no `.env` and no private vault
 - `.env` has never been committed; `backend/.env.example` documents every variable
 
 ## What is broken or missing
 
-**1. Shariah screening is running on fake data — blocks everything.**
-`ZOYA_ENVIRONMENT=sandbox` returns randomized results: JPM and BAC screen `COMPLIANT`, AAPL and
-KO screen `NON_COMPLIANT`. Until this is real, every gate decision is meaningless. Decision
-taken: build an AAOIFI screen from free SEC EDGAR XBRL data rather than paying for Zoya live.
-Verified feasible — EDGAR exposes the ticker→CIK map and current-quarter fundamentals with no
-API key. Note that the **business-activity screen must run first**: on financial ratios alone,
-JPMorgan passes. SIC 6021 is what disqualifies it.
+**1. The new screen is built but not routed.**
+`agents/shariah_agent.py` still imports `zoya_compliance.check_us_symbol`. The swap to
+`sec_edgar_screen.check_us_symbol` is a one-line change and the return shapes are compatible,
+but until it happens every gate decision is still running on randomized sandbox data. **This is
+the single highest-value line of code outstanding.**
 
-**2. No trade has ever run end to end.**
+**2. The strategy layer has no endpoint.**
+`option_strategy.py` works and is tested, but nothing calls it over HTTP. A caller must supply
+`option_contract` to `/paper/preview` by hand, or use `check_option_strategy.py`.
+`local_api.py` was deliberately left untouched to avoid collisions.
+
+**3. No trade has ever run end to end.**
 Preview → Shariah → risk → approval → `EXECUTE PAPER` → Alpaca → fill → reconcile → ledger has
-never been exercised against the real API. This is the largest unquantified risk.
+never been exercised against the real API. Largest unquantified risk. See the margin blocker
+above — this is what will surface it.
 
-**3. No strategy layer.**
-Nothing calls `fetch_option_chain` to pick a strike. Option chain data is available; the
-selection logic is not written.
+**4. Held positions are never re-screened.**
+Every screening call site is on the *order* path. `portfolio_store.py` contains no reference to
+compliance at all. The system screens at the moment you buy and then never looks again. This is
+the subject of the next session — see below.
 
-**4. Options P&L is not tracked locally.**
+**5. Options P&L is not tracked locally.**
 `portfolio_store` models whole shares only. Option fills are audited under their OCC symbol but
-create no position. Alpaca is the source of truth for options P&L. Deliberate scope decision.
+create no position. Alpaca is the source of truth. Deliberate scope decision.
 
-**5. `/explain` endpoint not built.**
-`explain_compliance.py` exists as a CLI that combines a screening result with local policy
-notes, under the rule that notes explain but never override. It is not exposed over HTTP or in
-the dashboard.
+**6. `/explain` endpoint not built.**
+`explain_compliance.py` exists as a CLI combining a screening result with local policy notes,
+under the rule that notes explain but never override. Not exposed over HTTP or in the dashboard.
+
+**7. Demo hosting unsolved.**
+Submission requires the demo on Streamlit, Replit, or Vercel. The current dashboard is a local
+static file against a local FastAPI backend.
+
+**8. Stale Moomoo-era position.**
+`4.0 AAPL` at average cost `323.3487`, account suffix `1740`, in `backend/paper_trading.db`. It
+predates the Alpaca account and will pollute exposure math in the demo.
+
+## Next session — time-varying compliance
+
+The idea driving this: a company that screens compliant today can stop being compliant later —
+a new contract, a change in the business, a balance sheet that drifts over the 33% line. The
+current system cannot see any of that.
+
+This is **not** a new requirement. `screening-criteria-breakdown.md` §2 already specifies it,
+under *"Shariah-compliant securities which are subsequently re-classified as Shariah
+non-compliant"*, along with the disposal rules and a twice-yearly review cycle (last Friday of
+May and November). It is a documented gap, not a feature invention.
+
+### Agreed so far
+
+- **The colours describe the position, not permission to buy.** The buy gate stays exactly as
+  it is — binary, fail-closed, untouched. Green/yellow/red answers *"what must I do about what
+  I already hold?"*, which the system currently cannot answer at all.
+
+  | | meaning | action |
+  |---|---|---|
+  | 🟢 | screens compliant, comfortable margin | none |
+  | 🟡 | still compliant, but thin margin or stale/weak data (TSLA at 32.0% cash) | watch |
+  | 🔴 | screen has flipped to non-compliant | **required**: dispose or hold-under-exemption; purification accruing |
+
+- **Red always carries a required action**, never a vague warning. This is what keeps "yellow
+  means trade it anyway" from creeping in and turning a hard gate into a soft one.
+- The SC disposal rules are a **state machine pivoting on an effective date**, not a score:
+  price ≥ cost on the effective date → must dispose; price < cost → may hold until dividends +
+  market value reach cost; dividends/gains before the effective date → keep; after it → owed to
+  baitulmal/charity.
+- **Re-screening held positions is the piece to design first.** Highest value, no LLM risk,
+  directly implements the documented gap.
+
+### Open questions — resolve these before designing
+
+1. **Is purification tracking in scope?** Computing "you owe $X to charity" requires cost basis
+   and dividend history per position over time, which `portfolio_store` does not track today.
+   It is the biggest scope fork in the design, and probably where the judging marks are, since
+   almost nothing on the market implements it.
+2. **Is there also a discovery/research rating?** The agreed framing colours positions you
+   hold. A separate question is whether users browse a "how compliant is this company" rating
+   *before* buying. That pulls the design toward a research surface rather than portfolio
+   state — genuinely different architecture. Not yet answered.
+3. **What triggers a re-screen?** SC says twice yearly, which is too slow to demo. Likely
+   on-demand plus a daily sweep, but the *effective date* semantics need to be pinned down:
+   the date SC would have reclassified, or the date we noticed?
+
+### Sketched, deliberately not designed yet
+
+- **Explainer chatbot.** Lowest risk of the four — `CLAUDE.md` already permits a model to
+  explain a decision, and `explain_compliance.py` already does this deterministically with the
+  rule *"notes explain but cannot override."* A chat surface over the trace is an extension of
+  an existing principle, not a new one. Good demo value, roughly a day.
+- **8-K event detection agent.** An agent reading SEC **material-event filings** — primary
+  sources, not news sentiment — that *flags* companies for re-screening. Produces **evidence,
+  never verdicts**; the deterministic screen still decides. This is the only way to catch a
+  business-activity change such as a new defense contract, which the SIC-based tier 1 will
+  never see, since SIC is one primary-industry label that rarely changes. Highest cost and the
+  only one carrying philosophical risk — keep it strictly a flagger.
 
 ## Running it
 
@@ -102,14 +226,21 @@ Check configuration without printing secrets:
 
 Expected: `Alpaca mode: paper`, both Alpaca keys `True`, adapter `alpaca_mcp`.
 
-## Tests
-
-27 suites pass. Run any of them directly, e.g.:
+Screen a symbol against real SEC data, or select a contract, without creating an order:
 
 ```powershell
-.\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
-.\.venv\Scripts\python.exe backend\test_alpaca_paper_adapter.py
-.\.venv\Scripts\python.exe backend\test_option_fill_ledger.py
+.\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0,'backend'); import sec_edgar_screen; print(sec_edgar_screen.check_us_symbol('AAPL'))"
+.\.venv\Scripts\python.exe backend\check_option_strategy.py AAPL --shares 100
+```
+
+## Tests
+
+30 suites pass. Run any of them directly, e.g.:
+
+```powershell
+.\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
+.\.venv\Scripts\python.exe backend\test_option_strategy.py
+.\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
 .\.venv\Scripts\python.exe backend\test_repo_defaults.py
 ```
 
@@ -117,42 +248,29 @@ Two suites fail for environmental reasons only, not regressions: `test_moomoo.py
 `test_local_api_smoke.py` both try to reach Moomoo OpenD on `127.0.0.1:11111`, which is not
 running. `test_local_api_smoke.py` hangs on the SDK's retry loop rather than failing fast.
 
+**Convention worth keeping:** when a new test passes on the first run, break the code
+deliberately and confirm it fails. The two suites added this session were each mutation-checked
+that way — 7 mutations against the screen, 12 against the strategy layer, all caught.
+
 ## Next steps, in order
 
-1. **Build the AAOIFI screen.** `sec_fundamentals.py` (ticker→CIK, companyfacts, SIC) feeding
-   `aaoifi_screen.py` (business-activity screen first, then ratios). Scope it to a 20–40 symbol
-   watchlist, not the whole market — a screen that shows its evidence beats a screen with
-   breadth. Use `docs/shariah-policy/screening-criteria-breakdown.md` as the spec; never invent
-   a threshold.
-2. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
-   before anything depends on it working.
-3. **Solve demo hosting.** Submission requires the demo on Streamlit, Replit, or Vercel. The
-   current dashboard is a local static file against a local FastAPI backend. Prove the deploy
-   path early with a stub.
-4. **Covered-call selection** on top of `fetch_option_chain`.
-5. **`GET /stock/{symbol}/explain`** plus a dashboard panel showing verdict → rule fired →
-   fiqh basis with citation.
-6. **Clear the stale Moomoo-era position** before demoing the portfolio view:
-   `4.0 AAPL` at average cost `323.3487`, account suffix `1740`, in `backend/paper_trading.db`.
-   It predates the Alpaca account (`0TCX`) and will pollute exposure math in the demo.
-
-## Read-only API contracts available for UI work
-
-Use these rather than rebuilding aggregates in the browser:
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /market-overview` | Watchlist health, scan freshness, data-source counts |
-| `GET /investment-committee` | Candidates, committee status, pending approvals, exposure |
-| `GET /stock/{symbol}/profile` | Shariah status, market data, latest scan, exposure, limits |
-| `GET /positions` | Flattened positions with valuation and reduce eligibility |
-| `GET /execution-audit` | Queue integrity, broker safety, payload audit failures |
-| `GET /portfolio` | Positions, fills, cost basis, realized P&L, exposure percentages |
+1. **Switch `agents/shariah_agent.py` to `sec_edgar_screen`.** One line. Until this lands, every
+   gate decision still runs on randomized sandbox data.
+2. **Resolve the margin-account blocker** above. Nothing can be approved until it is.
+3. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
+   before anything else depends on it working.
+4. **Design the re-screening subsystem** — answer the three open questions above first.
+5. **Solve demo hosting.** Prove the deploy path early with a stub.
+6. **Expose the strategy layer** over HTTP, and `GET /stock/{symbol}/explain` plus a dashboard
+   panel showing verdict → rule fired → fiqh basis with citation.
+7. **Clear the stale Moomoo-era position** before demoing the portfolio view.
 
 ## Standing constraints
 
 - Do not move to `autonomous_paper` until manual paper execution is reliable and fully audited.
 - Do not put an LLM in the decision path. A model may explain a gate decision; it must never
-  make, approve, or bypass one.
+  make, approve, or bypass one. The 8-K agent above is a flagger, and that boundary is what
+  keeps it acceptable.
+- Do not weaken a gate to unblock a demo. If a gate is inconvenient, that is the gate working.
 - Treat FinceptTerminal as architectural inspiration only — it is AGPL-3.0 plus a commercial
   license, so do not copy code, assets, prompts, or screens without a license review.
