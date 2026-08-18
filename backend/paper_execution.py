@@ -7,10 +7,13 @@ configured adapter. Broker submission remains opt-in through configuration.
 import sqlite3
 import json
 
+from alpaca_paper_adapter import ALPACA_ADAPTERS, check_alpaca_status
+from alpaca_paper_adapter import reconcile_paper_order as reconcile_alpaca_order
+from alpaca_paper_adapter import submit_paper_order as submit_alpaca_order
 from approval_queue import get_approval, record_broker_reconciliation, record_broker_submission, update_execution_status
 from config import load_settings
 from moomoo_status import check_moomoo_status
-from moomoo_paper_adapter import reconcile_paper_order, submit_paper_order
+from moomoo_paper_adapter import broker_submission_from_approval, reconcile_paper_order, submit_paper_order
 from portfolio_store import open_position_quantity
 from trading_modes import mode_capabilities
 
@@ -106,16 +109,19 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             "approval_audit": audit_gate,
         }
 
-    moomoo = check_moomoo_status()
+    # `moomoo` holds whichever paper broker is configured; the key name is kept for
+    # the existing execute-response contract. PAPER environment == Alpaca paper account.
+    use_alpaca = settings.paper_execution_adapter in ALPACA_ADAPTERS
+    moomoo = check_alpaca_status() if use_alpaca else check_moomoo_status()
     if (
         not moomoo.get("paper_account_ready")
-        or moomoo.get("environment") != "SIMULATE"
+        or moomoo.get("environment") not in {"SIMULATE", "PAPER"}
         or moomoo.get("account_status") != "ACTIVE"
     ):
         result = update_execution_status(
             connection,
             queue_id,
-            status="MOOMOO_NOT_READY",
+            status="BROKER_NOT_READY" if use_alpaca else "MOOMOO_NOT_READY",
             message=moomoo.get("reason") or moomoo.get("status", "moomoo_not_ready"),
         )
         return {**result, "status": result["execution_status"], "queue_id": queue_id, "moomoo": moomoo, "broker_submission": False}
@@ -137,7 +143,7 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             "portfolio_gate": sell_gate,
         }
 
-    broker_response = submit_paper_order(approval, moomoo)
+    broker_response = (submit_alpaca_order if use_alpaca else submit_paper_order)(approval, moomoo)
     if not broker_response.get("broker_submission"):
         result = update_execution_status(
             connection,
@@ -312,6 +318,15 @@ def validate_sell_reduction(connection: sqlite3.Connection, approval: dict, moom
     }
 
 
+def reconcile_for_approval(approval: dict) -> dict:
+    """Reconcile through the adapter that actually placed the order, not the current setting."""
+    stored = broker_submission_from_approval(approval) or {}
+    adapter = str(stored.get("adapter") or load_settings().paper_execution_adapter)
+    if adapter in ALPACA_ADAPTERS:
+        return reconcile_alpaca_order(approval)
+    return reconcile_paper_order(approval)
+
+
 def reconcile_submitted_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
     approval = get_approval(connection, queue_id)
     if approval is None:
@@ -325,7 +340,7 @@ def reconcile_submitted_paper_order(connection: sqlite3.Connection, queue_id: in
             "reason": "approval row has no broker submission",
         }
 
-    reconciliation = reconcile_paper_order(approval)
+    reconciliation = reconcile_for_approval(approval)
     if not reconciliation.get("broker_submission"):
         return {
             "status": reconciliation.get("status", "BROKER_RECONCILE_ERROR"),

@@ -8,6 +8,12 @@ from pathlib import Path
 import os
 
 BACKEND_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BACKEND_DIR.parent
+
+# Committed defaults so a fresh clone runs without any local vault. Both can be pointed
+# at a larger private research vault through backend/.env.
+DEFAULT_SHARIAH_WIKI_PATH = REPO_ROOT / "docs" / "shariah-policy"
+DEFAULT_SHARIAH_UNIVERSE_PATH = REPO_ROOT / "data" / "shariah-universe" / "2026-05-29.json"
 
 
 def _load_local_env() -> None:
@@ -31,6 +37,11 @@ class Settings:
     tiingo_api_token: str | None
     zoya_api_key: str | None
     zoya_environment: str
+    alpaca_api_key_id: str | None
+    alpaca_secret_key: str | None
+    alpaca_mode: str
+    alpaca_data_feed: str | None
+    market_data_provider: str
     shariah_universe_path: str | None
     shariah_wiki_path: str | None
     trading_mode: str
@@ -67,6 +78,14 @@ def _int_env(name: str, default: str, *, minimum: int | None = None) -> int:
     return value
 
 
+def _path_env(name: str, default: Path) -> str | None:
+    """Env var wins; otherwise use the committed default when it actually exists."""
+    configured = os.getenv(name)
+    if configured:
+        return configured
+    return str(default) if default.exists() else None
+
+
 def load_settings() -> Settings:
     trading_mode = os.getenv("TRADING_MODE", "approval").strip().lower()
     if trading_mode not in {"advisory", "approval", "autonomous_paper"}:
@@ -75,6 +94,14 @@ def load_settings() -> Settings:
     mode = os.getenv("MOOMOO_MODE", "paper").strip().lower()
     if mode != "paper":
         raise ValueError("MOOMOO_MODE must remain 'paper'; live mode is disabled")
+
+    alpaca_mode = os.getenv("ALPACA_MODE", "paper").strip().lower()
+    if alpaca_mode != "paper":
+        raise ValueError("ALPACA_MODE must remain 'paper'; live mode is disabled")
+
+    market_data_provider = os.getenv("MARKET_DATA_PROVIDER", "alpaca").strip().lower()
+    if market_data_provider not in {"alpaca", "tiingo"}:
+        raise ValueError("MARKET_DATA_PROVIDER must be alpaca or tiingo")
 
     try:
         port = int(os.getenv("MOOMOO_PORT", "11111"))
@@ -92,8 +119,13 @@ def load_settings() -> Settings:
         tiingo_api_token=os.getenv("TIINGO_API_TOKEN") or None,
         zoya_api_key=os.getenv("ZOYA_API_KEY") or None,
         zoya_environment=os.getenv("ZOYA_ENVIRONMENT", "sandbox").strip().lower(),
-        shariah_universe_path=os.getenv("SHARIAH_UNIVERSE_PATH") or None,
-        shariah_wiki_path=os.getenv("SHARIAH_WIKI_PATH") or None,
+        alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID") or None,
+        alpaca_secret_key=os.getenv("ALPACA_SECRET_KEY") or None,
+        alpaca_mode=alpaca_mode,
+        alpaca_data_feed=os.getenv("ALPACA_DATA_FEED") or None,
+        market_data_provider=market_data_provider,
+        shariah_universe_path=_path_env("SHARIAH_UNIVERSE_PATH", DEFAULT_SHARIAH_UNIVERSE_PATH),
+        shariah_wiki_path=_path_env("SHARIAH_WIKI_PATH", DEFAULT_SHARIAH_WIKI_PATH),
         trading_mode=trading_mode,
         moomoo_mode=mode,
         moomoo_host=os.getenv("MOOMOO_HOST", "127.0.0.1"),
