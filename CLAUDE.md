@@ -64,6 +64,7 @@ Reconcile        POST /paper/reconcile/{queue_id}
 | Broker + market data | `alpaca_paper_adapter.py`, `alpaca_market_data.py` |
 | Gate chain | `shariah_gate.py`, `option_structure_gate.py`, `account_shariah_gate.py`, `shariah_candidate.py`, `agents/` |
 | Compliance data | `sec_edgar_screen.py` (self-built SC screen), `zoya_compliance.py` (sandbox only) |
+| Strategy | `option_strategy.py` — proposes a contract; approves nothing |
 | Orchestration | `local_api.py`, `paper_execution.py`, `approval_workflow.py`, `agent_coordinator.py` |
 | State | `approval_queue.py`, `portfolio_store.py`, `watchlist_store.py` |
 | Legacy | `moomoo_*.py` — superseded by Alpaca, retained for history. Do not extend. |
@@ -141,6 +142,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
 .\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
 .\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
+.\.venv\Scripts\python.exe backend\test_option_strategy.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_option_structure_gate.py
 .\.venv\Scripts\python.exe backend\test_account_shariah_gate.py
@@ -152,7 +154,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
 ```
 
-29 suites pass. Two fail for environmental reasons only and are **not** regressions:
+30 suites pass. Two fail for environmental reasons only and are **not** regressions:
 `test_moomoo.py` and `test_local_api_smoke.py` both try to reach Moomoo OpenD on
 `127.0.0.1:11111`, which isn't running, and retry until they hang or refuse.
 
@@ -182,8 +184,15 @@ individually:
    diverts option fills to `paper_fills` under the OCC symbol and returns
    `OPTION_FILL_RECORDED` without touching `paper_positions`. Alpaca is the source of truth for
    options P&L. Do not "fix" this by booking contracts as shares — that was a real bug.
-3. **No strategy layer exists.** Nothing calls `fetch_option_chain` to select a strike. The
-   chain data is available; the decision logic is not written.
+3. **The strategy layer selects but is not wired to an endpoint.** `option_strategy.py` calls
+   `fetch_option_chain` and picks a contract for both Level 1 strategies: 1–7 DTE, the strike
+   closest to 4% OTM inside a 2–7% band, filtered for a live bid, a spread under 15% of mid, a
+   minimum premium, and a standard 100-share multiplier; sized from owned shares or settled
+   cash. It emits an `option_contract` that drops straight into `build_shariah_candidate`, and
+   a `rationale` string narrating the choice. What is missing: no endpoint calls it, so a
+   caller must supply `option_contract` to `/paper/preview` by hand or use
+   `check_option_strategy.py`. Selecting is not approving — a selected contract still has to
+   clear the whole gate chain, and `test_option_strategy.py` asserts exactly that.
 4. **The end-to-end chain has never run against real Alpaca.** `test_option_execution_smoke.py`
    now exercises preview → approval → execute for a covered call, an unsupported strategy, a
    margin account, and an under-collateralized cash-secured put — through the real FastAPI app,
