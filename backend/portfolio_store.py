@@ -5,6 +5,10 @@ import sqlite3
 from datetime import datetime, timezone
 
 
+# Standard US equity-option contract size.
+OPTION_CONTRACT_MULTIPLIER = 100
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -87,6 +91,47 @@ def sync_filled_order(connection: sqlite3.Connection, approval: dict) -> dict:
     broker_order_id = str(reconciliation.get("broker_order_id") or approval.get("execution_message") or "")
     notional = round(quantity * avg_price, 4)
 
+    if is_option_fill(reconciliation):
+        # paper_positions models whole shares only: no contract multiplier, no strike,
+        # no expiry, and no assignment handling. Booking an option fill here would add
+        # contracts to the underlying's share count. Record it for audit and leave the
+        # equity ledger untouched; Alpaca remains the source of truth for options P&L.
+        contract_symbol = str(reconciliation.get("broker_code") or symbol).upper()
+        insert_paper_fill(
+            connection,
+            queue_id=queue_id,
+            broker_order_id=broker_order_id,
+            symbol=contract_symbol,
+            side=side,
+            quantity=quantity,
+            avg_price=avg_price,
+            notional=round(quantity * avg_price * OPTION_CONTRACT_MULTIPLIER, 4),
+            filled_at=filled_at,
+            account_suffix=account_suffix,
+            account_type=account_type,
+            reconciliation=reconciliation,
+        )
+        connection.commit()
+        return {
+            "status": "OPTION_FILL_RECORDED",
+            "queue_id": queue_id,
+            "position_updated": False,
+            "reason": "option fills are audited but not tracked in the equity position ledger",
+            "fill": {
+                "broker_order_id": broker_order_id,
+                "symbol": contract_symbol,
+                "underlying": symbol,
+                "side": side,
+                "contracts": quantity,
+                "avg_price": avg_price,
+                "notional": round(quantity * avg_price * OPTION_CONTRACT_MULTIPLIER, 4),
+                "contract_multiplier": OPTION_CONTRACT_MULTIPLIER,
+                "filled_at": filled_at,
+                "account_suffix": account_suffix,
+                "account_type": account_type,
+            },
+        }
+
     if side == "SELL":
         position = connection.execute(
             """
@@ -109,6 +154,75 @@ def sync_filled_order(connection: sqlite3.Connection, approval: dict) -> dict:
                 "account_suffix": account_suffix,
             }
 
+    insert_paper_fill(
+        connection,
+        queue_id=queue_id,
+        broker_order_id=broker_order_id,
+        symbol=symbol,
+        side=side,
+        quantity=quantity,
+        avg_price=avg_price,
+        notional=notional,
+        filled_at=filled_at,
+        account_suffix=account_suffix,
+        account_type=account_type,
+        reconciliation=reconciliation,
+    )
+    position = apply_fill_to_position(
+        connection,
+        symbol=symbol,
+        account_suffix=account_suffix,
+        account_type=account_type,
+        side=side,
+        quantity=quantity,
+        avg_price=avg_price,
+    )
+    connection.commit()
+    return {
+        "status": "POSITION_SYNCED",
+        "queue_id": queue_id,
+        "position_updated": True,
+        "fill": {
+            "broker_order_id": broker_order_id,
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "avg_price": avg_price,
+            "notional": notional,
+            "filled_at": filled_at,
+            "account_suffix": account_suffix,
+            "account_type": account_type,
+        },
+        "position": position,
+    }
+
+
+def is_option_fill(reconciliation: dict) -> bool:
+    """True when the reconciled order was an option contract rather than shares."""
+    asset_class = str(reconciliation.get("asset_class") or "").strip().lower()
+    if asset_class in {"option", "us_option"}:
+        return True
+    # Defensive fallback for adapters that omit asset_class: OCC-21 symbols are
+    # <root><6 digits><C|P><8 digits>, so they are far longer than any ticker.
+    code = str(reconciliation.get("broker_code") or "")
+    return len(code) >= 15 and code[-9] in {"C", "P"} and code[-8:].isdigit()
+
+
+def insert_paper_fill(
+    connection: sqlite3.Connection,
+    *,
+    queue_id,
+    broker_order_id: str,
+    symbol: str,
+    side: str,
+    quantity: float,
+    avg_price: float,
+    notional: float,
+    filled_at: str,
+    account_suffix: str,
+    account_type,
+    reconciliation: dict,
+) -> None:
     connection.execute(
         """
         INSERT INTO paper_fills (
@@ -140,33 +254,6 @@ def sync_filled_order(connection: sqlite3.Connection, approval: dict) -> dict:
             json.dumps(reconciliation, sort_keys=True),
         ),
     )
-    position = apply_fill_to_position(
-        connection,
-        symbol=symbol,
-        account_suffix=account_suffix,
-        account_type=account_type,
-        side=side,
-        quantity=quantity,
-        avg_price=avg_price,
-    )
-    connection.commit()
-    return {
-        "status": "POSITION_SYNCED",
-        "queue_id": queue_id,
-        "position_updated": True,
-        "fill": {
-            "broker_order_id": broker_order_id,
-            "symbol": symbol,
-            "side": side,
-            "quantity": quantity,
-            "avg_price": avg_price,
-            "notional": notional,
-            "filled_at": filled_at,
-            "account_suffix": account_suffix,
-            "account_type": account_type,
-        },
-        "position": position,
-    }
 
 
 def apply_fill_to_position(
