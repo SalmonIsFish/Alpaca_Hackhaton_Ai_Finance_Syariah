@@ -63,6 +63,7 @@ Reconcile        POST /paper/reconcile/{queue_id}
 |---|---|
 | Broker + market data | `alpaca_paper_adapter.py`, `alpaca_market_data.py` |
 | Gate chain | `shariah_gate.py`, `option_structure_gate.py`, `account_shariah_gate.py`, `shariah_candidate.py`, `agents/` |
+| Compliance data | `sec_edgar_screen.py` (self-built SC screen), `zoya_compliance.py` (sandbox only) |
 | Orchestration | `local_api.py`, `paper_execution.py`, `approval_workflow.py`, `agent_coordinator.py` |
 | State | `approval_queue.py`, `portfolio_store.py`, `watchlist_store.py` |
 | Legacy | `moomoo_*.py` — superseded by Alpaca, retained for history. Do not extend. |
@@ -139,6 +140,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_alpaca_execution_wiring.py
 .\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
 .\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
+.\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_option_structure_gate.py
 .\.venv\Scripts\python.exe backend\test_account_shariah_gate.py
@@ -150,7 +152,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
 ```
 
-28 suites pass. Two fail for environmental reasons only and are **not** regressions:
+29 suites pass. Two fail for environmental reasons only and are **not** regressions:
 `test_moomoo.py` and `test_local_api_smoke.py` both try to reach Moomoo OpenD on
 `127.0.0.1:11111`, which isn't running, and retry until they hang or refuse.
 
@@ -165,10 +167,16 @@ individually:
 
 ## Known limitations — read before claiming anything works
 
-1. **Zoya sandbox returns randomized data.** With `ZOYA_ENVIRONMENT=sandbox`, JPM and BAC screen
-   `COMPLIANT` while AAPL and KO screen `NON_COMPLIANT`. Any demo or claim about compliance is
-   meaningless until this is a live key or replaced with a self-built AAOIFI screen from SEC
-   EDGAR data.
+1. **Zoya sandbox returns randomized data, and Zoya is still the live route.** With
+   `ZOYA_ENVIRONMENT=sandbox`, JPM and BAC screen `COMPLIANT` while AAPL and KO screen
+   `NON_COMPLIANT`. Any demo or claim about compliance is meaningless while this is the
+   route. `sec_edgar_screen.check_us_symbol` is the replacement — a self-built SC Malaysia
+   two-tier screen off free SEC EDGAR filings, drop-in compatible with
+   `zoya_compliance.check_us_symbol` — but `agents/shariah_agent.py` **has not been
+   switched to it yet**; that one-line routing change is still outstanding. Read the
+   module docstring before trusting a verdict: business activity is approximated by SIC
+   code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
+   are overstated. Both approximations err toward rejection.
 2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
    shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
    diverts option fills to `paper_fills` under the OCC symbol and returns
