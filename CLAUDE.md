@@ -148,11 +148,16 @@ individually:
 .\.venv\Scripts\python.exe backend\test_execution_audit.py
 .\.venv\Scripts\python.exe backend\test_portfolio_store.py
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
+.\.venv\Scripts\python.exe backend\test_local_api_smoke.py
+.\.venv\Scripts\python.exe backend\test_moomoo_status.py
 ```
 
-28 suites pass. Two fail for environmental reasons only and are **not** regressions:
-`test_moomoo.py` and `test_local_api_smoke.py` both try to reach Moomoo OpenD on
-`127.0.0.1:11111`, which isn't running, and retry until they hang or refuse.
+30 suites pass. `check_moomoo_status()` now pre-checks TCP reachability before touching the
+moomoo SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute
+retry/backoff — this is what made `test_local_api_smoke.py` and the dashboard's status refresh
+hang; both now complete fast with no Moomoo gateway running. `test_moomoo.py` still hangs by
+design: it instantiates the moomoo SDK directly, bypassing that pre-check, since its purpose is
+to manually verify a *real* OpenD connection when you actually have one running.
 
 ### Testing conventions
 
