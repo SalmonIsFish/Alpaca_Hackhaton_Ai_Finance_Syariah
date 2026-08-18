@@ -1,369 +1,158 @@
-# Amanah Trader Handoff
+# Amanah Trader — Current State and Next Steps
 
-## Resume After Shutdown
+Last updated: August 18, 2026 (Asia/Kuala_Lumpur).
 
-Last saved: July 25, 2026, Asia/Kuala_Lumpur.
+Read `CLAUDE.md` for architecture and safety rules. This file is the running status: what
+works, what doesn't, and what to do next.
 
-What just worked:
+## Where the project is
 
-- Latest clean git checkpoint before this handoff update: `994ed75 Add execution audit API contract`.
-- Backend technical hardening is saved through execution audit checks, reduce-only SELL guards, portfolio SELL fill integrity, stock profile API, Investment Committee API, market overview API, positions API, and execution audit API.
-- Latest non-network test set passed:
-  - `test_investment_committee.py`
-  - `test_stock_profile.py`
-  - `test_market_overview.py`
-  - `test_positions_api.py`
-  - `test_execution_audit.py`
-  - `test_local_api_smoke.py`
-  - `test_portfolio_risk_limits.py`
-  - `test_paper_execution_gates.py`
-  - `test_portfolio_store.py`
-  - `test_moomoo_paper_adapter.py`
-  - `test_risk_checks.py`
-- The older controlled Moomoo paper execution also worked end to end, with queue `54` filled and synced into the local portfolio ledger.
-
-Start next session:
-
-```powershell
-cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
-.\run_local.ps1
-```
-
-Then open:
-
-```text
-C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
-```
-
-Recently completed build task:
-
-1. Added tabbed dashboard structure while keeping safety gates unchanged.
-2. Added read-only `GET /market-overview` for saved watchlist health and data freshness.
-3. Added read-only `GET /positions` for flattened position and reduce-eligibility state.
-4. Added read-only `GET /execution-audit` for queue integrity and broker safety state.
-5. Added read-only `GET /investment-committee` and `GET /stock/{symbol}/profile` contracts for UI/agent work.
-6. Hardened execution approval audits with row-vs-payload consistency checks.
-7. Added reduce-only SELL guards at execution time and portfolio sync time.
-8. Keep FinceptTerminal as reference inspiration only; do not copy code/assets because of licensing constraints.
-
-## Current State
-
-Amanah Trader is currently a local-first, Shariah-aware paper trading control system with a multi-agent architecture.
+Amanah Trader is a local-first Shariah-compliant paper-trading control system on **Alpaca**.
+The broker adapter, market data, gate chain, and approval flow are built and tested. The
+compliance data feeding the gates is not yet real, and no trade has run end to end.
 
 Current mode:
 
-- `TRADING_MODE=approval`
-- `PAPER_EXECUTION_ENABLED=false`
-- `PAPER_EXECUTION_ADAPTER=disabled`
-- live trading disabled
-- broker submission disabled until both the execution lock and adapter are enabled
+- `TRADING_MODE=approval` — human approval required for every order
+- `PAPER_EXECUTION_ADAPTER=alpaca_mcp`
+- `PAPER_EXECUTION_ENABLED=true` — **the system is armed**; broker submission is possible
+- Live trading disabled by construction (`ALPACA_MODE=paper`, hardcoded paper base URL)
 
-Working components:
+Alpaca paper account in use: suffix `0TCX`, `MARGIN`, options trading level 3.
 
-- Dashboard UI with dark/light mode.
-- Local FastAPI backend.
-- Agent coordinator.
-- Shariah Agent with market routing:
-  - numeric symbols route to Malaysia SC local universe
-  - US symbols route to Zoya
-- Quant Agent using Tiingo market data.
-- Risk Engine with hard-coded limits.
-- Approval queue in SQLite.
-- Moomoo OpenD paper account status check.
-- Opportunities scanner for Shariah/quant/risk watchlist review, including trend and breakout status.
-  - scanner requires real Tiingo history
-  - scanner shows `DATA_ERROR` instead of fixture prices when market data is unavailable
-  - scanner shows alert candidates near breakout, but only `READY` candidates can be approved
-  - dashboard can auto-scan the watchlist on a configurable minute interval
-- Locked paper execution endpoint.
-- Typed paper execution confirmation gate requiring `EXECUTE PAPER`.
-- Read-only Stock Profile API at `GET /stock/{symbol}/profile`.
-- Read-only Investment Committee API at `GET /investment-committee`.
-- Read-only Market Overview API at `GET /market-overview`.
-- Read-only Positions API at `GET /positions`.
-- Read-only Execution Audit API at `GET /execution-audit`.
-- Paper execution gate stack with fake and real adapter paths:
-  - `approval` or `autonomous_paper` trading mode required
-  - `PAPER_EXECUTION_ENABLED=true` required
-  - Shariah PASS required
-  - Risk PASS required
-  - active market-compatible SIMULATE account required
-  - broker submission recorded in queue and audit when adapter submits
-  - read-only reconciliation records submitted/filled/cancelled/rejected/expired status transitions
-- Real Moomoo adapter is available with `PAPER_EXECUTION_ADAPTER=moomoo`, currently limited to US equity paper orders such as `AAPL` -> `US.AAPL`.
-- Portfolio ledger stores filled paper orders as local positions:
-  - positions include quantity, average cost, cost basis, realized P&L placeholder, account suffix/type, and update time
-  - dashboard has a Portfolio/Risk section
-  - market value, unrealized P&L, and exposure are priced from Tiingo/cache when available
-  - valuation reports `DATA_ERROR` instead of using fixture prices when market data is unavailable
+## What works
 
-## How To Continue
+**Broker adapter** — `alpaca_paper_adapter.py`
 
-Open PowerShell:
+- Equity and Level 1 option orders (sell covered call, sell cash-secured put, and closing them)
+- Two transports: REST (`alpaca`) and the official MCP server (`alpaca_mcp`)
+- MCP verified live: handshake, tool schemas, and the `_alpaca_mcp_security` trust envelope
+- Paper-only by construction; multi-leg spreads rejected by design
 
-```powershell
-cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
-.\run_local.ps1
-```
+**Market data** — `alpaca_market_data.py`
 
-Leave that window open.
+- Drop-in replacement for the Tiingo path; provider selected by `MARKET_DATA_PROVIDER`
+- Verified live: 252 daily bars for AAPL, 316 Sep-2026 option contracts with live quotes
+- Automatic IEX fallback when the plan cannot query recent SIP data
+- Tiingo retained as a working fallback provider
 
-Open the dashboard:
+**Gate chain** — merged from `feature/shariah-options-gate`
 
-```text
-C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
-```
+- `shariah_gate` (company), `option_structure_gate` (contract), `account_shariah_gate` (Riba)
+- Single entry point: `shariah_candidate.build_shariah_candidate()`
+- Wired into `POST /paper/approval`; a covered call on a MARGIN account is now rejected with
+  `margin_account_not_permitted`, and an under-collateralized put with
+  `option_structure_rejected`
 
-Recommended test flow:
+**Integrity fixes**
 
-1. Refresh dashboard.
-2. Confirm:
-   - API Connection: connected
-   - Trading Mode: paper / simulate
-   - Operating Mode: approval
-   - Paper Execution: locked
-   - Moomoo OpenD: paper ready
-3. Click Scan in Opportunities.
-4. Review:
-   - Ready count
-   - Alert count
-   - Shariah status
-   - Quant signal
-   - Risk status
-   - trigger price
-   - distance to trigger
-   - breakout gap
-5. Optionally enable Auto Scan and leave the dashboard open.
-6. If a row is Ready, click Use In Ticket.
-7. Run agents for that symbol.
-8. Confirm:
-   - Shariah Agent: PASS / US
-   - Quant Agent: BUY
-   - Risk Engine: PASS
-   - Broker Submission: Disabled
-9. If ready, approve the paper order.
-10. Confirm it appears in Approval Queue.
-11. Click Execute Paper.
-12. Type `EXECUTE PAPER` when prompted.
-13. Confirm result is `EXECUTION_LOCKED` while `PAPER_EXECUTION_ENABLED=false`.
+- Option fills no longer corrupt the equity ledger (they previously booked contracts as shares
+  of the underlying at 1/100th the true exposure)
+- Reduce-only SELL guards at execution time and at portfolio sync time
+- Approval-payload audit rejects malformed or stale payloads before any broker call
 
-## Useful Checks
+**Repo hygiene**
+
+- Runs from a clean clone with no `.env` and no private vault: Shariah universe and policy
+  notes resolve to committed in-repo copies (`data/`, `docs/`)
+- `.env` has never been committed; `backend/.env.example` documents every variable
+
+## What is broken or missing
+
+**1. Shariah screening is running on fake data — blocks everything.**
+`ZOYA_ENVIRONMENT=sandbox` returns randomized results: JPM and BAC screen `COMPLIANT`, AAPL and
+KO screen `NON_COMPLIANT`. Until this is real, every gate decision is meaningless. Decision
+taken: build an AAOIFI screen from free SEC EDGAR XBRL data rather than paying for Zoya live.
+Verified feasible — EDGAR exposes the ticker→CIK map and current-quarter fundamentals with no
+API key. Note that the **business-activity screen must run first**: on financial ratios alone,
+JPMorgan passes. SIC 6021 is what disqualifies it.
+
+**2. No trade has ever run end to end.**
+Preview → Shariah → risk → approval → `EXECUTE PAPER` → Alpaca → fill → reconcile → ledger has
+never been exercised against the real API. This is the largest unquantified risk.
+
+**3. No strategy layer.**
+Nothing calls `fetch_option_chain` to pick a strike. Option chain data is available; the
+selection logic is not written.
+
+**4. Options P&L is not tracked locally.**
+`portfolio_store` models whole shares only. Option fills are audited under their OCC symbol but
+create no position. Alpaca is the source of truth for options P&L. Deliberate scope decision.
+
+**5. `/explain` endpoint not built.**
+`explain_compliance.py` exists as a CLI that combines a screening result with local policy
+notes, under the rule that notes explain but never override. It is not exposed over HTTP or in
+the dashboard.
+
+## Running it
+
+From the repo root:
 
 ```powershell
-cd C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\backend
-..\.venv\Scripts\python.exe test_local_api_smoke.py
-..\.venv\Scripts\python.exe test_investment_committee.py
-..\.venv\Scripts\python.exe test_stock_profile.py
-..\.venv\Scripts\python.exe test_market_overview.py
-..\.venv\Scripts\python.exe test_positions_api.py
-..\.venv\Scripts\python.exe test_execution_audit.py
-..\.venv\Scripts\python.exe test_portfolio_risk_limits.py
-..\.venv\Scripts\python.exe test_portfolio_store.py
-..\.venv\Scripts\python.exe test_paper_execution_gates.py
-..\.venv\Scripts\python.exe test_moomoo_paper_adapter.py
-..\.venv\Scripts\python.exe test_risk_checks.py
-..\.venv\Scripts\python.exe check_market_data.py AAPL --strict
-..\.venv\Scripts\python.exe check_zoya.py AAPL
-..\.venv\Scripts\python.exe check_moomoo_status.py
+.\.venv\Scripts\python.exe -m uvicorn local_api:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-Expected good signs:
+Dashboard: open `dashboard\index.html`.
 
-- smoke test passes
-- paper execution gate test passes
-- Moomoo adapter mapping test passes
-- Tiingo source is `tiingo`
-- Zoya status is `COMPLIANT` for AAPL
-- Moomoo status is `paper_account_ready`
+Check configuration without printing secrets:
 
-## Next Plan
+```powershell
+.\.venv\Scripts\python.exe backend\check_config.py
+```
 
-Next recommended build step:
+Expected: `Alpaca mode: paper`, both Alpaca keys `True`, adapter `alpaca_mcp`.
 
-1. Keep working technical first unless the user explicitly asks for UI.
-2. Add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior.
-3. If returning to UI, wire tabs to the existing backend contracts:
-   - `/market-overview`
-   - `/investment-committee`
-   - `/stock/{symbol}/profile`
-   - `/positions`
-   - `/execution-audit`
+## Tests
 
-Do not jump to autonomous paper mode until manual paper execution is reliable and fully audited.
+27 suites pass. Run any of them directly, e.g.:
 
-## Latest Operator Notes
+```powershell
+.\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
+.\.venv\Scripts\python.exe backend\test_alpaca_paper_adapter.py
+.\.venv\Scripts\python.exe backend\test_option_fill_ledger.py
+.\.venv\Scripts\python.exe backend\test_repo_defaults.py
+```
 
-- Portfolio-derived risk limits were added on July 25, 2026:
-  - `PAPER_ACCOUNT_EQUITY` defaults to `10000` and is used as the denominator for position and total exposure percentages.
-  - `GET /portfolio` now returns account exposure percentages and risk limits.
-  - `/agent/evaluate` and `/paper/preview` add a portfolio risk overlay using market value when available, otherwise cost basis.
-  - approvals are blocked for projected position exposure above 5%, projected total exposure above 25%, or same-symbol buy add-ons.
-  - Dashboard order ticket exposure fields are pre-filled from current portfolio exposure.
-  - Investment Committee and Approval Queue show portfolio exposure blockers.
-- Risk usability and reduce-position handling were added on July 25, 2026:
-  - previews now include `blocker_messages` with readable explanations for quant and portfolio blockers.
-  - SELL previews are reduce-only and can become `READY_FOR_APPROVAL` when a local position exists and the sell quantity does not exceed local quantity.
-  - full-position SELL projections now reduce position and total exposure to zero.
-  - Dashboard exposure inputs accept two decimal places such as `3.22`.
-  - Dashboard Risk Policy panel shows account equity, risk limits, current exposure, same-symbol add-on policy, and current ticket state.
-  - Portfolio `Reduce` buttons populate a SELL ticket from the local position.
-  - `CLAUDE.md` was added as the Claude Code handoff file.
-- Configurable risk limits were added on July 25, 2026:
-  - `risk_checks.py` keeps current defaults but accepts injected limits.
-  - `load_settings()` reads all risk thresholds from env vars.
-  - `/portfolio` and portfolio risk overlays report/use the active configured limits.
-- SELL/reduce technical coverage was added on July 25, 2026:
-  - portfolio tests now verify partial SELL realized P&L and full-close realized P&L.
-  - closed positions no longer hide realized P&L from `total_realized_pnl`.
-  - Moomoo adapter tests verify SELL maps to `TrdSide.SELL` without contacting OpenD.
-- Pre-trade quote snapshots were added on July 25, 2026:
-  - `/paper/preview` now records `quote_snapshot` with latest close, price date, source, freshness/cache fields, and bar count.
-  - approval queue payloads persist the quote snapshot for audit.
-  - dashboard Approval Queue and Paper Orders show preview quote metadata.
-- Execution-time reduce-only SELL guard was added on July 25, 2026:
-  - `/paper/execute/{queue_id}` now re-checks local portfolio quantity before submitting any SELL.
-  - SELL is rejected with `PORTFOLIO_SELL_GATE_FAILED` if no local position exists or requested quantity exceeds the active paper account suffix.
-  - Tests cover no-position SELL, oversized SELL, and valid reduce SELL without contacting Moomoo.
-- Portfolio fill sync SELL integrity was added on July 25, 2026:
-  - filled SELL reconciliations are rejected with `INVALID_SELL_FILL` when local holdings are missing or smaller than the fill quantity.
-  - rejected SELL fills are not inserted into `paper_fills` and do not change `paper_positions`.
-  - tests cover no-position and oversized SELL reconciliation before any ledger mutation.
-- Stock profile backend contract was added on July 25, 2026:
-  - `GET /stock/{symbol}/profile` combines Shariah status, market data, latest opportunity scan result, local portfolio exposure, and active risk limits.
-  - this is a read-only API intended to support a future Claude Code stock detail page without changing broker or execution behavior.
-  - `test_stock_profile.py` verifies the contract using fixture market, scan, and portfolio data.
-- Investment Committee backend contract was added on July 25, 2026:
-  - `GET /investment-committee` aggregates latest watchlist candidates, committee statuses, blockers, pending approvals, submitted orders, portfolio exposure, and active risk limits.
-  - this is read-only and intended to support a future Claude Code Investment Committee view without touching broker execution.
-  - `test_investment_committee.py` verifies ready, alert, pending approval, and portfolio exposure fields.
-- Market overview backend contract was added on July 25, 2026:
-  - `GET /market-overview` summarizes saved watchlist scan health without triggering a new market-data scan.
-  - it returns watchlist coverage, ready/alert/data-error counts, data freshness/source counts, stale cache symbols, recent alert events, and portfolio exposure.
-  - `test_market_overview.py` verifies scan coverage, stale-cache detection, data health counts, and candidate buckets.
-- Positions backend contract was added on July 25, 2026:
-  - `GET /positions` returns flattened open positions with valuation, exposure percentages, risk-limit status, and max reduce quantity.
-  - this is read-only and intended to support a dedicated Positions page or position-management agent without touching broker execution.
-  - `test_positions_api.py` verifies exposure, valuation, and reduce eligibility fields.
-- Execution audit backend contract was added on July 25, 2026:
-  - `GET /execution-audit` returns queue integrity and broker safety status without mutating broker, approval, or portfolio state.
-  - it summarizes pending execution rows, broker-submitted rows, filled-but-unsynced rows, locked/rejected attempts, recent execution events, and approval payload audit failures.
-  - `test_execution_audit.py` verifies payload-audit failure detection, locked execution status, broker submission status, and missing fill-sync reporting.
-- Approval payload audit guard was added on July 25, 2026:
-  - `/paper/execute/{queue_id}` now rejects malformed/stale payloads with `APPROVAL_AUDIT_FAILED`.
-  - required payload fields include `preview.quote_snapshot`, PASS Shariah and risk agent summaries, approval status `APPROVED_PAPER_READY`, and empty preview blockers.
-  - tests cover missing quote snapshots and stale blockers before any adapter call.
-  - row-vs-payload consistency checks now reject mismatched preview, quote, and approval candidate symbol/side/quantity/price/notional fields.
-- Mark-to-market portfolio valuation was added on July 25, 2026:
-  - `GET /portfolio` now prices open positions through the existing Tiingo market-data path with `allow_fallback=false` and `allow_stale_cache=true`.
-  - Dashboard Portfolio/Risk shows market value, unrealized P&L, and exposure weight.
-  - Current AAPL valuation from local check: latest close `321.66`, source `tiingo_cache_after_error`, price date `2026-07-23`, market value `321.66`, unrealized P&L `-0.20`.
-- Portfolio/exposure tracking was added on July 24, 2026:
-  - `GET /portfolio` returns positions, fills, total cost basis, realized P&L, and valuation placeholders.
-  - Queue id `54` was synced into the local portfolio ledger.
-  - Position: `AAPL`, quantity `1.0`, average cost `321.86`, cost basis `321.86`, account MARGIN ending `1740`.
-  - Portfolio sync audit event id: `355`.
-- Paper order reconciliation succeeded on July 24, 2026:
-  - Queue id: `54`
-  - Broker order id: `3129776`
-  - Reconciled status: `BROKER_FILLED`
-  - Moomoo order status: `FILLED_ALL`
-  - Dealt quantity: `1.0`
-  - Dealt average price: `321.86`
-  - Account: MARGIN ending `1740`
-  - Audit event id: `354`
-  - The queue payload now stores `broker_reconciliation` and `broker_reconciliation_history`.
-- Controlled Moomoo paper execution succeeded again on July 24, 2026:
-  - Queue id: `54`
-  - Broker order id: `3129776`
-  - Broker status: `BROKER_SUBMITTED`
-  - Broker order status: `SUBMITTING`
-  - Environment: `SIMULATE`
-  - Account: MARGIN ending `1740`
-  - Symbol/code: `AAPL` / `US.AAPL`
-  - Quantity/price: `1` @ `333.74`
-  - Audit event id: `353`
-  - The queue payload contains the raw `broker_submission` adapter response.
-- Dashboard now has a Paper Orders panel that should show this order after Refresh.
-- Controlled Moomoo paper execution succeeded on July 22, 2026:
-  - Dashboard produced an `APPROVED_PAPER_READY` AAPL queue item.
-  - `Execute Paper` submitted to Moomoo paper/simulate.
-  - Moomoo Papertrade notification reported the order was filled.
-  - Queue label now shows `Broker Submitted` for broker-submitted rows.
-- Adapter finding from the test:
-  - Moomoo returned a US-compatible SIMULATE MARGIN account for `US.AAPL`.
-  - Do not require SIMULATE account type to be `CASH`; require active `SIMULATE` and market-compatible account selection.
-- Current useful scanner state: AAPL and PANW are alert candidates, not ready trades.
-- AAPL example:
-  - price: `326.59`
-  - trigger: `333.74`
-  - distance: `7.15`
-  - status: `ALERT`
-  - blocker: `quant_no_buy_signal`
-- PANW example:
-  - price: `348.66`
-  - trigger: `358.68`
-  - distance: `10.02`
-  - status: `ALERT`
-  - blocker: `quant_no_buy_signal`
-- `ALERT` means monitor only. Approval should remain disabled until a row becomes `READY` with Quant `BUY` and Breakout OK.
+Two suites fail for environmental reasons only, not regressions: `test_moomoo.py` and
+`test_local_api_smoke.py` both try to reach Moomoo OpenD on `127.0.0.1:11111`, which is not
+running. `test_local_api_smoke.py` hangs on the SDK's retry loop rather than failing fast.
 
-## Reference Inspiration: FinceptTerminal
+## Next steps, in order
 
-Source reviewed: https://github.com/Fincept-Corporation/FinceptTerminal
+1. **Build the AAOIFI screen.** `sec_fundamentals.py` (ticker→CIK, companyfacts, SIC) feeding
+   `aaoifi_screen.py` (business-activity screen first, then ratios). Scope it to a 20–40 symbol
+   watchlist, not the whole market — a screen that shows its evidence beats a screen with
+   breadth. Use `docs/shariah-policy/screening-criteria-breakdown.md` as the spec; never invent
+   a threshold.
+2. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
+   before anything depends on it working.
+3. **Solve demo hosting.** Submission requires the demo on Streamlit, Replit, or Vercel. The
+   current dashboard is a local static file against a local FastAPI backend. Prove the deploy
+   path early with a stub.
+4. **Covered-call selection** on top of `fetch_option_chain`.
+5. **`GET /stock/{symbol}/explain`** plus a dashboard panel showing verdict → rule fired →
+   fiqh basis with citation.
+6. **Clear the stale Moomoo-era position** before demoing the portfolio view:
+   `4.0 AAPL` at average cost `323.3487`, account suffix `1740`, in `backend/paper_trading.db`.
+   It predates the Alpaca account (`0TCX`) and will pollute exposure math in the demo.
 
-Important constraint:
+## Read-only API contracts available for UI work
 
-- Treat FinceptTerminal as design and architecture inspiration only.
-- Do not copy code, assets, agent prompts, screens, or proprietary structure into this project without a license review.
-- The repository is dual-licensed AGPL-3.0 plus a Fincept commercial license, and its README/license text says commercial or internal company use requires a paid commercial license.
+Use these rather than rebuilding aggregates in the browser:
 
-What is useful for Amanah Trader:
+| Endpoint | Purpose |
+|---|---|
+| `GET /market-overview` | Watchlist health, scan freshness, data-source counts |
+| `GET /investment-committee` | Candidates, committee status, pending approvals, exposure |
+| `GET /stock/{symbol}/profile` | Shariah status, market data, latest scan, exposure, limits |
+| `GET /positions` | Flattened positions with valuation and reduce eligibility |
+| `GET /execution-audit` | Queue integrity, broker safety, payload audit failures |
+| `GET /portfolio` | Positions, fills, cost basis, realized P&L, exposure percentages |
 
-1. Terminal-style information architecture
-   - FinceptTerminal organizes finance workflows as a full terminal: research, portfolio, news, analytics, trading, and workflow screens.
-   - For Amanah Trader, adapt the concept as dashboard modules: Overview, Watchlist, Opportunities, Stock Profile, Approval Queue, Paper Orders, Portfolio/Risk, and Audit.
+## Standing constraints
 
-2. Python analytics boundary
-   - Their docs describe Python analytics/data scripts returning JSON to the native app.
-   - Our project already has this shape with FastAPI and Python modules. Keep extending small deterministic services with JSON contracts rather than building one large monolith.
-
-3. Agent taxonomy
-   - FinceptTerminal emphasizes many specialized agents: trader/investor, economic, geopolitics, and research agents.
-   - For Amanah Trader, build fewer but higher-trust agents first: Shariah, Quant, Risk, Market Data, Portfolio Exposure, News/Event, and Investment Committee.
-
-4. Data connector mindset
-   - FinceptTerminal highlights many data connectors: market, macro, government, SEC/EDGAR, FRED/IMF/World Bank, and alternatives.
-   - Prioritize connectors that improve our strategy decisions: SEC filings, earnings calendar, macro rates, sector/industry data, analyst fundamentals, and halal/compliance datasets.
-
-5. Visual workflow idea
-   - Their node-editor/workflow concept is interesting, but too large for the immediate path.
-   - A lighter version for us: a readable decision pipeline view showing Shariah -> Market Data -> Quant -> Risk -> Approval -> Execution, with each node storing inputs, outputs, blockers, and timestamps.
-
-Recommended future work inspired by this:
-
-1. Rename queue status `Broker On` to `Broker Submitted`.
-2. Add a dedicated Paper Orders page:
-   - broker order id
-   - submitted/fill status
-   - account suffix
-   - environment
-   - execution timestamp
-   - raw adapter response
-3. Add a Stock Profile page:
-   - Shariah result
-   - Tiingo price/history
-   - trend/breakout chart
-   - latest scanner status
-   - risk sizing preview
-4. Add an Investment Committee view:
-   - one row per candidate
-   - agent votes and blockers
-   - human decision notes
-   - full audit trail
-5. Add a connector roadmap:
-   - SEC/EDGAR
-   - FRED macro data
-   - earnings calendar
-   - fundamentals/ratios
-   - halal universe enrichment
-6. Consider a future local AI analyst only after deterministic data and audit flows are reliable.
+- Do not move to `autonomous_paper` until manual paper execution is reliable and fully audited.
+- Do not put an LLM in the decision path. A model may explain a gate decision; it must never
+  make, approve, or bypass one.
+- Treat FinceptTerminal as architectural inspiration only — it is AGPL-3.0 plus a commercial
+  license, so do not copy code, assets, prompts, or screens without a license review.

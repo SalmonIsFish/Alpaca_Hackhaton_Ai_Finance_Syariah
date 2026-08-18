@@ -1,151 +1,187 @@
-# Amanah Trader / AI Finance Syariah Handoff
+# Amanah Trader — Claude Code Working Notes
 
-## Current Purpose
+## What this is
 
-This repo is a local-first Shariah-compliant paper-trading workflow. It uses deterministic agents for Shariah, quant, and risk checks before anything can enter the approval queue. Broker submission is paper-only and must stay behind explicit gates.
+A local-first, Shariah-compliant paper-trading control system. Deterministic Python agents
+screen every order for Shariah compliance, option-structure permissibility, account-level Riba
+exposure, and risk limits **before** it can enter the approval queue, and a human must type a
+confirmation phrase before anything reaches the broker.
 
-Latest shutdown checkpoint: `994ed75 Add execution audit API contract` on July 25, 2026. Git working tree was clean before this handoff update.
+The point is not the screening — plenty of products screen stocks. The point is that the gate
+chain **enforces** and **proves**: an order that fails any gate cannot be submitted, and every
+decision is recorded with its evidence.
 
-## Safety Rules
+Broker: **Alpaca**, paper only.
 
-- Live trading is disabled by design. Keep `MOOMOO_MODE=paper`.
-- Paper broker submission must remain opt-in through `/paper/execute/{queue_id}` with confirmation phrase `EXECUTE PAPER`.
-- Do not bypass Shariah, quant, risk, approval, or confirmation gates.
-- Do not commit or print secrets from `backend/.env`.
-- Use local tests before changing broker-facing code.
+## Safety rules (these override convenience)
 
-## Claude Code Skills To Consider
+- **Live trading must remain impossible.** `ALPACA_MODE` is pinned to `paper` in
+  `config.load_settings()`, and `alpaca_paper_adapter.ALPACA_PAPER_BASE_URL` is a hardcoded
+  paper host with no live URL anywhere in the module and no env var that can repoint it. The
+  MCP transport forces `ALPACA_PAPER_TRADE=true` on the server it spawns.
+- Broker submission stays opt-in behind `POST /paper/execute/{queue_id}` with the confirmation
+  phrase `EXECUTE PAPER`.
+- Do not bypass or weaken the Shariah, option-structure, account, risk, approval, or
+  confirmation gates. If a gate is inconvenient, that is the gate working.
+- Broker adapters perform **no** compliance checks of their own. They submit what an
+  already-gated approval says to submit. Compliance lives in the gate chain, not the adapter.
+- Never commit or print secrets from `backend/.env`. `.env` has never been committed — keep it
+  that way. `backend/.env.example` documents the variables with empty values.
+- Run the local tests before changing anything broker-facing.
 
-Use these only after reviewing the installed `SKILL.md` files and confirming the current security audit status on https://www.skills.sh/audits. Prefer skills with Gen Agent Trust Hub, Socket, and Snyk pass results. Do not install skills with pending, failed, high-risk, or unclear audit status unless the user explicitly approves after review.
+## Architecture
 
-Recommended for the next UI/dashboard pass:
+```
+Preview          POST /paper/preview
+                   market data -> quant signal -> risk limits -> quote snapshot
+                   carries asset_class + option_contract for option orders
 
-```powershell
-npx skills add https://github.com/anthropics/skills --skill frontend-design
-npx skills add https://github.com/anthropics/skills --skill webapp-testing
-npx skills add https://github.com/obra/superpowers --skill verification-before-completion
-npx skills add https://github.com/mattpocock/skills --skill git-guardrails-claude-code
+Approval         POST /paper/approval
+                   local_api.broker_account_context()  resolves live broker facts:
+                     shares_held      <- portfolio_store.open_position_quantity
+                     cash_collateral  <- settled cash (NEVER buying_power)
+                     account_type     <- Alpaca multiplier (CASH / MARGIN)
+                     uses_margin      <- conservative: account_type == MARGIN
+                   shariah_candidate.build_shariah_candidate(...)  <-- the ONE gate entry point
+                   approval_workflow.approve_candidate(...)
+                     -> shariah_gate          is the company permissible?
+                     -> option_structure_gate is the contract permissible?
+                     -> account_shariah_gate  is the account free of Riba?
+                   APPROVED_PAPER_READY | REJECT(reason)
+
+Execution        POST /paper/execute/{queue_id}   requires "EXECUTE PAPER"
+                   paper_execution.py re-audits the stored payload, re-checks reduce-only SELL
+                   -> alpaca_paper_adapter.submit_paper_order(approval, broker)
+
+Reconcile        POST /paper/reconcile/{queue_id}
+                   -> portfolio_store.sync_filled_order  (equity only; see Known limitations)
 ```
 
-Optional token/context management skills:
+### Module ownership
 
-```powershell
-npx skills add https://github.com/affaan-m/everything-claude-code --skill strategic-compact
-npx skills add https://github.com/muratcankoylan/agent-skills-for-context-engineering --skill context-compression
-```
+| Concern | Files |
+|---|---|
+| Broker + market data | `alpaca_paper_adapter.py`, `alpaca_market_data.py` |
+| Gate chain | `shariah_gate.py`, `option_structure_gate.py`, `account_shariah_gate.py`, `shariah_candidate.py`, `agents/` |
+| Orchestration | `local_api.py`, `paper_execution.py`, `approval_workflow.py`, `agent_coordinator.py` |
+| State | `approval_queue.py`, `portfolio_store.py`, `watchlist_store.py` |
+| Legacy | `moomoo_*.py` — superseded by Alpaca, retained for history. Do not extend. |
 
-Why these:
+**`shariah_candidate.build_shariah_candidate()` is the only surface a broker adapter talks to.**
+Adapters never import a gate module directly. If something a gate needs isn't reaching it, fix
+the plumbing on the adapter side rather than changing the gate contract.
 
-- `frontend-design`: use for redesigning `dashboard/index.html` into a more usable trading control dashboard.
-- `webapp-testing`: use to verify the local FastAPI dashboard flow with browser/UI checks after redesign.
-- `verification-before-completion`: require fresh test or browser evidence before claiming the UI/backend task is done.
-- `git-guardrails-claude-code`: add Claude Code hooks that block dangerous git commands such as hard reset, clean, forced push, and broad restore/checkout.
-- `strategic-compact`: optional; use to trigger `/compact` at phase boundaries such as research -> plan -> implementation -> test, instead of waiting for automatic compaction.
-- `context-compression`: optional; use only for long sessions or handoff summaries where preserving key decisions matters more than minimizing a single message.
+## Configuration
 
-Token budget guidance for Claude Code:
+Everything is read via `os.getenv` in `config.load_settings()` from `backend/.env`.
+See `backend/.env.example` for the full list. The ones that change behaviour most:
 
-1. Do not install every useful-looking skill. Each skill can add discovery and instruction overhead.
-2. For the next session, install only `frontend-design`, `webapp-testing`, `verification-before-completion`, and `git-guardrails-claude-code`. Add `strategic-compact` only if the session gets long.
-3. Before editing, read `CLAUDE.md`, `NEXT_STEPS.md`, `dashboard/index.html`, and only the backend endpoints needed for `/investment-committee`, `/stock/{symbol}/profile`, and `/portfolio`.
-4. Avoid dumping full files into chat unless needed. Use targeted search, line ranges, diffs, and summaries.
-5. Use `/compact` after finishing a major phase, especially before switching from UI design to test/debug work.
-6. Keep handoff notes short and factual: changed files, commands run, results, remaining risks, and next action.
+| Variable | Default | Notes |
+|---|---|---|
+| `ALPACA_API_KEY_ID` / `ALPACA_SECRET_KEY` | — | Paper keys. User sets these; never ask for them in chat. |
+| `ALPACA_MODE` | `paper` | Any other value raises at startup. |
+| `PAPER_EXECUTION_ADAPTER` | `disabled` | `disabled` \| `fake` \| `alpaca` \| `alpaca_mcp` \| `moomoo` |
+| `PAPER_EXECUTION_ENABLED` | `false` | Master lock on broker submission. |
+| `MARKET_DATA_PROVIDER` | `alpaca` | `alpaca` \| `tiingo` |
+| `ZOYA_ENVIRONMENT` | `sandbox` | **Sandbox returns randomized data.** See Known limitations. |
+| `TRADING_MODE` | `approval` | `advisory` \| `approval` \| `autonomous_paper` |
+| Risk limits | see example | `MAX_POSITION_PCT`, `MAX_TOTAL_EXPOSURE_PCT`, `MAX_LOSS_PER_TRADE_PCT`, `MAX_DAILY_LOSS_PCT`, `MAX_ORDERS_PER_DAY` |
 
-Skill installation safety checklist:
+`SHARIAH_UNIVERSE_PATH` and `SHARIAH_WIKI_PATH` default to committed in-repo copies
+(`data/shariah-universe/`, `docs/shariah-policy/`), so a fresh clone runs with no `.env` at all.
+Set them only to point at a larger private vault.
 
-1. Install from the exact GitHub repository and skill name above, not a similarly named package.
-2. Check the skill page on `skills.sh` for audit status immediately before installing.
-3. After install, inspect added `SKILL.md` files and any scripts/hooks before running them.
-4. Keep the install project-local when possible.
-5. Do not install browser automation, cloud, trading, broker, wallet, or secret-management skills for this repo unless there is a specific task and a separate security review.
+## Alpaca integration
 
-## LangGraph / LangChain Guidance
+Two transports, both paper-only, selected by `PAPER_EXECUTION_ADAPTER`:
 
-Do not integrate LangGraph or LangChain in the immediate UI pass. The current core agents are deterministic Python functions, which is the right shape for Shariah, quant, risk, approval, and broker safety gates.
+- **`alpaca`** — REST over stdlib `urllib` against `https://paper-api.alpaca.markets`.
+- **`alpaca_mcp`** — the official MCP server via `uvx alpaca-mcp-server` (needs `uv`; override
+  the command with `ALPACA_MCP_COMMAND`). The server wraps every payload in a
+  `{"_alpaca_mcp_security": {...}, "data": {...}}` trust envelope; `unwrap_mcp_envelope()`
+  strips it. That envelope is a prompt-injection guard aimed at LLM callers — this adapter reads
+  named fields out of `data` deterministically and never treats tool output as instructions.
 
-Use this rule:
+Options are **Level 1 only**: sell covered call, sell cash-secured put, and closing those shorts.
+Multi-leg spreads are rejected by design. Contracts are built as OCC-21 symbols with
+`time_in_force=day` and an explicit `position_intent`.
 
-- Keep Shariah PASS/REJECT, quant signal rules, risk limits, approval audit checks, SELL reduce-only checks, and broker execution gates as plain tested Python.
-- Consider LangGraph later when the workflow needs durable orchestration across Shariah -> market data -> quant -> portfolio risk -> investment committee -> human approval -> paper execution -> reconciliation.
-- Consider LangChain later only for read-only LLM research agents, such as news/event summaries, SEC filing summaries, earnings transcript analysis, halal evidence explanations, and natural language portfolio Q&A.
-- Do not allow any LangChain or LLM agent to directly approve, bypass, or submit broker orders.
+Market data (`alpaca_market_data.py`) mirrors `tiingo_prices.fetch_eod_prices` exactly — same
+signature, same bar shape — so `market_data.summarize_history` switches providers with nothing
+downstream noticing. It also exposes `fetch_option_contracts` / `fetch_option_snapshots` /
+`fetch_option_chain` for strike selection. On a plan that cannot query recent SIP data it
+automatically retries on the IEX feed and labels the source `alpaca_iex`.
 
-Possible future architecture:
+## Running it
 
-```text
-Deterministic core:
-Shariah -> Market Data -> Quant -> Risk -> Approval Candidate
-
-LangGraph orchestration:
-Workflow state, retries, human-in-the-loop approval, audit timeline, reconciliation state
-
-LangChain / LLM research:
-Read-only summaries and explanations, never execution authority
-```
-
-## Run Commands
-
-From repo root:
+From the repo root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn local_api:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-Open dashboard:
+or `backend\run_local.ps1`. Dashboard: open `dashboard\index.html`.
 
-```text
-C:\Users\G2\OneDrive\Documents\Ai_Finance_Syariah\dashboard\index.html
-```
-
-Focused tests:
+Config check (prints booleans, never values):
 
 ```powershell
-.\.venv\Scripts\python.exe backend/test_local_api_smoke.py
-.\.venv\Scripts\python.exe backend/test_portfolio_risk_limits.py
-.\.venv\Scripts\python.exe backend/test_investment_committee.py
-.\.venv\Scripts\python.exe backend/test_stock_profile.py
-.\.venv\Scripts\python.exe backend/test_market_overview.py
-.\.venv\Scripts\python.exe backend/test_positions_api.py
-.\.venv\Scripts\python.exe backend/test_execution_audit.py
-.\.venv\Scripts\python.exe backend/test_portfolio_store.py
-.\.venv\Scripts\python.exe backend/test_paper_execution_gates.py
-.\.venv\Scripts\python.exe backend/test_moomoo_paper_adapter.py
-.\.venv\Scripts\python.exe backend/test_risk_checks.py
+.\.venv\Scripts\python.exe backend\check_config.py
 ```
 
-## Current State
+## Tests
 
-- Latest known filled paper order: queue `54`, broker order `3129776`, `AAPL BUY 1`, filled at `321.86`.
-- Local portfolio has `1.0 AAPL`, account suffix `1740`, account type `MARGIN`.
-- `/portfolio` marks positions to market using Tiingo/cache with no fixture fallback.
-- `PAPER_ACCOUNT_EQUITY` defaults to `10000` and is used as the denominator for risk exposure percentages.
-- Risk limits are configurable through env vars: `MAX_POSITION_PCT`, `MAX_TOTAL_EXPOSURE_PCT`, `MAX_LOSS_PER_TRADE_PCT`, `MAX_DAILY_LOSS_PCT`, and `MAX_ORDERS_PER_DAY`.
-- Default position limit is `5%`; default total exposure limit is `25%`.
-- BUY add-ons for an existing symbol are blocked by policy.
-- SELL previews are reduce-only: they can become ready only when the local paper position exists and sell quantity does not exceed local quantity.
-- Dashboard shows readable blocker messages in Agent Summary, Investment Committee, and Approval Queue.
-- Dashboard has a Risk Policy panel showing account equity, risk limits, total exposure, add-on policy, and the current ticket state.
-- Portfolio rows have a `Reduce` button that loads a SELL ticket from the local position.
-- Portfolio ledger tests cover partial and full SELL fills, including realized P&L after a position is closed.
-- Moomoo adapter tests cover SELL side mapping without contacting OpenD.
-- `/paper/preview` stores a read-only `quote_snapshot` for audit, and approval queue payloads preserve it.
-- `/paper/execute/{queue_id}` has an execution-time reduce-only SELL guard against the local paper portfolio and active account suffix.
-- `/paper/execute/{queue_id}` also audits the stored approval payload and rejects missing quote snapshots, non-PASS agent summaries, stale blockers, or non-approved payload status before adapter submission.
-- Execution audit cross-checks approval queue row fields against the stored preview, quote snapshot, and approval candidate before broker submission.
-- Portfolio fill sync rejects filled SELL reconciliations that exceed the local position, so bad or stale broker reconciliation cannot silently distort local holdings.
-- `/stock/{symbol}/profile` provides a read-only backend contract for Shariah status, market data, latest opportunity scan result, local portfolio exposure, and active risk limits.
-- `/investment-committee` provides a read-only aggregate of latest watchlist candidates, committee statuses, pending approvals, submitted orders, portfolio exposure, and risk limits.
-- `/market-overview` provides a read-only watchlist health contract with latest saved scan coverage, ready/alert/data-error counts, data freshness/source counts, stale cache symbols, recent alert events, and portfolio exposure.
-- `/positions` provides a read-only flattened positions contract with valuation, exposure status, and max reduce quantity for future position-management views or agents.
-- `/execution-audit` provides a read-only queue integrity and broker safety summary for pending execution, submitted orders, filled-but-unsynced orders, locked/rejected attempts, and approval payload audit failures.
+Every test is a plain script with a `main()` that prints `PASS: ...`. No pytest. Run them
+individually:
 
-## Good Next Tasks
+```powershell
+.\.venv\Scripts\python.exe backend\test_alpaca_paper_adapter.py
+.\.venv\Scripts\python.exe backend\test_alpaca_market_data.py
+.\.venv\Scripts\python.exe backend\test_alpaca_execution_wiring.py
+.\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
+.\.venv\Scripts\python.exe backend\test_shariah_candidate.py
+.\.venv\Scripts\python.exe backend\test_option_structure_gate.py
+.\.venv\Scripts\python.exe backend\test_account_shariah_gate.py
+.\.venv\Scripts\python.exe backend\test_option_fill_ledger.py
+.\.venv\Scripts\python.exe backend\test_repo_defaults.py
+.\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
+.\.venv\Scripts\python.exe backend\test_execution_audit.py
+.\.venv\Scripts\python.exe backend\test_portfolio_store.py
+.\.venv\Scripts\python.exe backend\test_risk_checks.py
+```
 
-1. If continuing UI later, use existing tabbed dashboard work and backend contracts instead of rebuilding browser-side aggregates.
-2. Use `GET /market-overview` for market health/watchlist overview.
-3. Use `GET /investment-committee` for Investment Committee.
-4. Use `GET /stock/{symbol}/profile` for stock detail.
-5. Use `GET /positions` for position management and reduce controls.
-6. Use `GET /execution-audit` for Audit/Diagnostics and queue safety.
-7. Next technical backend task: add a controlled SELL paper execution test only after manually confirming Moomoo paper behavior.
+27 suites pass. Two fail for environmental reasons only and are **not** regressions:
+`test_moomoo.py` and `test_local_api_smoke.py` both try to reach Moomoo OpenD on
+`127.0.0.1:11111`, which isn't running, and retry until they hang or refuse.
+
+### Testing conventions
+
+- Network access goes through one replaceable module-level seam — `alpaca_request`,
+  `alpaca_data_request`, `load_alpaca_mcp_client`, `check_alpaca_status`. Tests swap the seam;
+  they never hit a real API.
+- Prefer asserting the *request that was built*, not just the response that came back.
+- When a test passes on the first run, break the code deliberately and confirm the test fails.
+  Several real bugs in this repo were found exactly that way.
+
+## Known limitations — read before claiming anything works
+
+1. **Zoya sandbox returns randomized data.** With `ZOYA_ENVIRONMENT=sandbox`, JPM and BAC screen
+   `COMPLIANT` while AAPL and KO screen `NON_COMPLIANT`. Any demo or claim about compliance is
+   meaningless until this is a live key or replaced with a self-built AAOIFI screen from SEC
+   EDGAR data.
+2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
+   shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
+   diverts option fills to `paper_fills` under the OCC symbol and returns
+   `OPTION_FILL_RECORDED` without touching `paper_positions`. Alpaca is the source of truth for
+   options P&L. Do not "fix" this by booking contracts as shares — that was a real bug.
+3. **No strategy layer exists.** Nothing calls `fetch_option_chain` to select a strike. The
+   chain data is available; the decision logic is not written.
+4. **The end-to-end chain has never run against real Alpaca.** Every component is tested in
+   isolation; preview → approval → execute → fill → reconcile has not been exercised live.
+
+## Style
+
+- Deterministic Python for anything that gates, screens, or executes. No LLM in the decision
+  path — a language model may explain a decision but must never make, approve, or bypass one.
+- Match the surrounding code: small pure functions, dict returns with a `status` key, fail
+  closed on anything unknown.
+- Keep `local_api.py` diffs small; it is the file most likely to be touched concurrently.
