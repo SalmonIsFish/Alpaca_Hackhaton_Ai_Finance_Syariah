@@ -2,6 +2,10 @@ run = "bash backend/replit_start.sh"
 entrypoint = "backend/replit_app.py"
 modules = ["python-3.11"]
 
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "backend/replit_start.sh"]
+
 [[ports]]
 localPort = 8080
 externalPort = 80
