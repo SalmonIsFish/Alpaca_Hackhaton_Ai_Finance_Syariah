@@ -10,7 +10,8 @@ bars = [
 result = evaluate_us_s001(
     "TEST_ONLY",
     bars,
-    compliance_override={"status": "COMPLIANT", "symbol": "TEST_ONLY", "exchange": "TEST", "source": "LOCAL_TEST_FIXTURE"},
+    compliance_override={"status": "PASS", "symbol": "TEST_ONLY", "exchange": "TEST", "provider": "LOCAL_TEST_FIXTURE"},
 )
 print(result)
-print("TEST ONLY: no Zoya call and no order submission.")
+assert result["signal"] == "BUY", result
+print("TEST ONLY: no screening call and no order submission.")
