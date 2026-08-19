@@ -1161,6 +1161,23 @@
   </main>
 
   <script>
+    // When this file is served by the same process as the API (Replit deploy:
+    // FastAPI mounts this directory as static files alongside its own routes,
+    // see backend/replit_app.py), default to same-origin so the hosted demo
+    // needs no manual API-base entry. Local dev (opened as a file:// path, or
+    // served separately on localhost/127.0.0.1) keeps the explicit default.
+    (function setHostedApiBaseDefault() {
+      const host = window.location.hostname;
+      if (host && host !== "localhost" && host !== "127.0.0.1") {
+        document.addEventListener("DOMContentLoaded", () => {
+          const input = document.querySelector("#apiBase");
+          if (input) {
+            input.value = window.location.origin;
+          }
+        });
+      }
+    })();
+
     const apiBaseInput = document.querySelector("#apiBase");
     const refreshButton = document.querySelector("#refreshButton");
     const themeToggle = document.querySelector("#themeToggle");
