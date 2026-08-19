@@ -48,6 +48,20 @@ def ensure_portfolio_tables(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_value_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            captured_at TEXT NOT NULL,
+            account_equity REAL,
+            market_value REAL,
+            cost_basis REAL,
+            unrealized_pnl REAL,
+            realized_pnl REAL,
+            position_count INTEGER
+        )
+        """
+    )
     connection.commit()
 
 
@@ -450,3 +464,87 @@ def portfolio_snapshot(connection: sqlite3.Connection, *, price_lookup=None) -> 
         "valuation_errors": valuation_errors,
         "updated_at": utc_now(),
     }
+
+
+DEFAULT_PORTFOLIO_SNAPSHOT_THROTTLE_MINUTES = 15.0
+
+
+def latest_portfolio_snapshot_row(connection: sqlite3.Connection) -> dict | None:
+    ensure_portfolio_tables(connection)
+    row = connection.execute("SELECT * FROM portfolio_value_snapshots ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+
+def record_portfolio_snapshot(
+    connection: sqlite3.Connection,
+    snapshot: dict,
+    *,
+    throttle_minutes: float = DEFAULT_PORTFOLIO_SNAPSHOT_THROTTLE_MINUTES,
+) -> dict | None:
+    """Insert a portfolio value snapshot unless one was already captured within
+    throttle_minutes. Returns the inserted row, or None if throttled -- mirrors
+    the return-None-when-skipped convention local_api.py's /opportunities scan
+    throttle already uses (see DEFAULT_SCAN_THROTTLE_MINUTES there).
+
+    `snapshot` is whatever portfolio_snapshot_with_exposure() returns; only the
+    fields this table stores are read from it, so a caller in local_api.py can
+    pass that dict straight through without reshaping it.
+    """
+    ensure_portfolio_tables(connection)
+    latest = latest_portfolio_snapshot_row(connection)
+    if throttle_minutes and latest is not None:
+        captured_at = datetime.fromisoformat(latest["captured_at"])
+        if captured_at.tzinfo is None:
+            captured_at = captured_at.replace(tzinfo=timezone.utc)
+        seconds_since = (datetime.now(timezone.utc) - captured_at).total_seconds()
+        if seconds_since < throttle_minutes * 60:
+            return None
+
+    captured_at = utc_now()
+    row = {
+        "captured_at": captured_at,
+        "account_equity": snapshot.get("paper_account_equity"),
+        "market_value": snapshot.get("market_value"),
+        "cost_basis": snapshot.get("total_cost_basis"),
+        "unrealized_pnl": snapshot.get("unrealized_pnl"),
+        "realized_pnl": snapshot.get("total_realized_pnl"),
+        "position_count": snapshot.get("position_count"),
+    }
+    connection.execute(
+        """
+        INSERT INTO portfolio_value_snapshots (
+            captured_at, account_equity, market_value, cost_basis, unrealized_pnl, realized_pnl, position_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            row["captured_at"],
+            row["account_equity"],
+            row["market_value"],
+            row["cost_basis"],
+            row["unrealized_pnl"],
+            row["realized_pnl"],
+            row["position_count"],
+        ),
+    )
+    connection.commit()
+    return row
+
+
+def list_portfolio_snapshots(connection: sqlite3.Connection, *, limit: int = 500) -> list[dict]:
+    """Recent snapshots, oldest first -- what GET /portfolio/history returns.
+    No `range` filtering here by design: the frontend windows into
+    1D/1W/1M/ALL client-side from the full list, keeping this a dumb, easily
+    tested read (see docs/superpowers/specs/2026-08-19-portfolio-history-and-news-design.md)."""
+    ensure_portfolio_tables(connection)
+    capped_limit = max(1, min(2000, limit))
+    rows = connection.execute(
+        """
+        SELECT captured_at, account_equity, market_value, cost_basis, unrealized_pnl, realized_pnl, position_count
+        FROM portfolio_value_snapshots
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (capped_limit,),
+    ).fetchall()
+    return [dict(row) for row in reversed(rows)]

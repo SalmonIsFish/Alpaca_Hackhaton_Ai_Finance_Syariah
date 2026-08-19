@@ -692,6 +692,141 @@
       align-items: start;
     }
 
+    .allocation-bars {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .allocation-bar-row {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) 52px;
+      gap: 8px;
+      align-items: center;
+      font-size: var(--font-sm);
+    }
+
+    .allocation-bar-symbol {
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .allocation-bar-track {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .allocation-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+    }
+
+    .allocation-bar-pct {
+      text-align: right;
+      color: var(--muted);
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .chart-range-button {
+      min-height: 30px;
+      padding: 5px 12px;
+      font-size: var(--font-sm);
+      border-color: var(--border-strong);
+      background: var(--panel-3);
+      color: var(--text);
+    }
+
+    .chart-range-button.active {
+      border-color: transparent;
+      background: var(--accent);
+      color: var(--button-text);
+    }
+
+    .portfolio-chart {
+      width: 100%;
+      height: 160px;
+      display: block;
+    }
+
+    .chart-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: var(--font-sm);
+      padding: 20px 0;
+      text-align: center;
+    }
+
+    .chart-summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+      font-size: var(--font-sm);
+      color: var(--muted);
+    }
+
+    .news-list {
+      display: grid;
+      gap: 10px;
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    .news-item {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--panel-2);
+    }
+
+    .news-headline {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .news-headline a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .news-headline a:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    .news-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .news-summary {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .opportunity-controls {
       display: grid;
       gap: 10px;
@@ -863,6 +998,7 @@
       <button class="view-tab" type="button" data-view-tab="opportunities">Market Overview</button>
       <button class="view-tab" type="button" data-view-tab="stock">Stock Profile</button>
       <button class="view-tab" type="button" data-view-tab="portfolio">Portfolio/Risk</button>
+      <button class="view-tab" type="button" data-view-tab="news">News</button>
       <button class="view-tab" type="button" data-view-tab="orders">Orders</button>
       <button class="view-tab" type="button" data-view-tab="committee">Committee</button>
       <button class="view-tab" type="button" data-view-tab="audit">Audit</button>
@@ -1128,6 +1264,28 @@
 
         <section class="panel" data-view="portfolio">
           <div class="panel-head">
+            <h2>Portfolio Value History</h2>
+            <span id="portfolioHistoryBadge" class="badge warn">Not checked</span>
+          </div>
+          <div class="chart-controls" id="portfolioHistoryRangeControls">
+            <button class="chart-range-button" type="button" data-range="1D">1D</button>
+            <button class="chart-range-button" type="button" data-range="1W">1W</button>
+            <button class="chart-range-button" type="button" data-range="1M">1M</button>
+            <button class="chart-range-button active" type="button" data-range="ALL">ALL</button>
+          </div>
+          <div id="portfolioHistoryChartWrap">
+            <p class="chart-empty">No portfolio value history yet -- snapshots accumulate as the dashboard refreshes.</p>
+          </div>
+          <div id="portfolioHistorySummary" class="chart-summary"></div>
+
+          <h2 class="subsection-heading">Current Allocation</h2>
+          <div id="allocationBars" class="allocation-bars">
+            <p class="chart-empty">No open positions to break down yet.</p>
+          </div>
+        </section>
+
+        <section class="panel" data-view="portfolio">
+          <div class="panel-head">
             <h2>Portfolio/Risk</h2>
             <span id="portfolioBadge" class="badge warn">0 Positions</span>
           </div>
@@ -1138,6 +1296,20 @@
             <div class="paper-order-field"><span>Realized P&L</span><strong id="portfolioRealizedPnl">-</strong></div>
           </div>
           <div id="portfolioList" class="portfolio-list"></div>
+        </section>
+
+        <section class="panel" data-view="news">
+          <div class="panel-head">
+            <h2>News</h2>
+            <span id="newsBadge" class="badge warn">Not loaded</span>
+          </div>
+          <div class="stock-profile-actions">
+            <label>Symbols <span class="panel-meta">(blank = watchlist + positions)</span>
+              <input id="newsSymbols" type="text" placeholder="AAPL, MSFT" autocomplete="off">
+            </label>
+            <button id="loadNewsButton" class="secondary" type="button">Refresh</button>
+          </div>
+          <div id="newsList" class="news-list"></div>
         </section>
 
         <section class="panel" data-view="audit">
@@ -1232,6 +1404,15 @@
     const portfolioUnrealizedPnl = document.querySelector("#portfolioUnrealizedPnl");
     const portfolioRealizedPnl = document.querySelector("#portfolioRealizedPnl");
     const portfolioList = document.querySelector("#portfolioList");
+    const allocationBars = document.querySelector("#allocationBars");
+    const portfolioHistoryBadge = document.querySelector("#portfolioHistoryBadge");
+    const portfolioHistoryRangeControls = document.querySelector("#portfolioHistoryRangeControls");
+    const portfolioHistoryChartWrap = document.querySelector("#portfolioHistoryChartWrap");
+    const portfolioHistorySummary = document.querySelector("#portfolioHistorySummary");
+    const newsBadge = document.querySelector("#newsBadge");
+    const newsSymbols = document.querySelector("#newsSymbols");
+    const loadNewsButton = document.querySelector("#loadNewsButton");
+    const newsList = document.querySelector("#newsList");
     const auditList = document.querySelector("#auditList");
     const auditCount = document.querySelector("#auditCount");
     const opportunitySymbols = document.querySelector("#opportunitySymbols");
@@ -1948,6 +2129,7 @@
         renderApprovalQueue(approvals);
         renderPaperOrders(approvals);
         renderPortfolio(portfolio);
+        refreshPortfolioHistory();
         renderAudit(audit);
         renderMarketOverview(marketOverview);
         renderExecutionAudit(executionAudit);
@@ -2432,6 +2614,7 @@
       portfolioUnrealizedPnl.className = Number(payload.unrealized_pnl || 0) >= 0 ? "ok" : "bad";
       portfolioRealizedPnl.textContent = formatMoney(payload.total_realized_pnl);
       portfolioRealizedPnl.className = Number(payload.total_realized_pnl || 0) >= 0 ? "ok" : "bad";
+      renderAllocationBreakdown(positions);
 
       if (!positions.length && !fills.length) {
         const empty = document.createElement("div");
@@ -2476,6 +2659,245 @@
         portfolioList.append(row);
       });
     }
+
+    // ---------------------------------------------------------------------
+    // Allocation breakdown -- pure client-side render off the existing
+    // /portfolio response (exposure_weight_pct is already computed
+    // server-side per position), no new endpoint needed.
+    // ---------------------------------------------------------------------
+
+    function renderAllocationBreakdown(positions) {
+      allocationBars.textContent = "";
+      const weighted = positions.filter((position) => position.exposure_weight_pct != null && position.market_value != null);
+      if (!weighted.length) {
+        const empty = document.createElement("p");
+        empty.className = "chart-empty";
+        empty.textContent = "No open positions to break down yet.";
+        allocationBars.appendChild(empty);
+        return;
+      }
+      weighted
+        .slice()
+        .sort((a, b) => Number(b.exposure_weight_pct) - Number(a.exposure_weight_pct))
+        .forEach((position) => {
+          const pct = Number(position.exposure_weight_pct) || 0;
+          const row = document.createElement("div");
+          row.className = "allocation-bar-row";
+          const symbol = document.createElement("span");
+          symbol.className = "allocation-bar-symbol";
+          symbol.textContent = position.symbol;
+          const track = document.createElement("div");
+          track.className = "allocation-bar-track";
+          const fill = document.createElement("div");
+          fill.className = "allocation-bar-fill";
+          fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+          track.appendChild(fill);
+          const pctLabel = document.createElement("span");
+          pctLabel.className = "allocation-bar-pct";
+          pctLabel.textContent = `${pct.toFixed(1)}%`;
+          row.appendChild(symbol);
+          row.appendChild(track);
+          row.appendChild(pctLabel);
+          allocationBars.appendChild(row);
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // Portfolio value history -- hand-rolled inline SVG line chart, no
+    // charting library (the dashboard has zero external script dependencies
+    // by design). Tries GET /portfolio/history; renders an empty state on
+    // 404/failure rather than erroring, same fallback pattern as the
+    // Shariah Trace panel's /explain handoff -- see
+    // hackathon/alpaca-2026/PORTFOLIO_HISTORY_AND_NEWS_CONTRACT.md.
+    // ---------------------------------------------------------------------
+
+    let currentPortfolioHistory = [];
+    let portfolioHistoryRange = "ALL";
+
+    const PORTFOLIO_HISTORY_RANGE_MS = {
+      "1D": 24 * 60 * 60 * 1000,
+      "1W": 7 * 24 * 60 * 60 * 1000,
+      "1M": 30 * 24 * 60 * 60 * 1000,
+      ALL: null,
+    };
+
+    async function fetchPortfolioHistory() {
+      try {
+        const payload = await getJson("/portfolio/history");
+        return Array.isArray(payload.snapshots) ? payload.snapshots : [];
+      } catch (error) {
+        return null;
+      }
+    }
+
+    async function refreshPortfolioHistory() {
+      const snapshots = await fetchPortfolioHistory();
+      if (snapshots === null) {
+        setBadge(portfolioHistoryBadge, "Not available", "warn");
+        currentPortfolioHistory = [];
+        renderPortfolioHistoryChart();
+        return;
+      }
+      currentPortfolioHistory = snapshots;
+      setBadge(portfolioHistoryBadge, `${snapshots.length} ${snapshots.length === 1 ? "Snapshot" : "Snapshots"}`, snapshots.length ? "ok" : "warn");
+      renderPortfolioHistoryChart();
+    }
+
+    function windowedPortfolioHistory() {
+      const windowMs = PORTFOLIO_HISTORY_RANGE_MS[portfolioHistoryRange];
+      if (!windowMs) {
+        return currentPortfolioHistory;
+      }
+      const cutoff = Date.now() - windowMs;
+      return currentPortfolioHistory.filter((snapshot) => new Date(snapshot.captured_at).getTime() >= cutoff);
+    }
+
+    function renderPortfolioHistoryChart() {
+      const snapshots = windowedPortfolioHistory();
+      portfolioHistoryChartWrap.textContent = "";
+      portfolioHistorySummary.textContent = "";
+      if (snapshots.length < 2) {
+        const empty = document.createElement("p");
+        empty.className = "chart-empty";
+        empty.textContent = currentPortfolioHistory.length
+          ? "Not enough snapshots in this range yet -- try a wider range."
+          : "No portfolio value history yet -- snapshots accumulate as the dashboard refreshes.";
+        portfolioHistoryChartWrap.appendChild(empty);
+        return;
+      }
+
+      const values = snapshots.map((snapshot) => Number(snapshot.account_equity ?? snapshot.market_value ?? 0));
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const range = maxValue - minValue || 1;
+      const width = 600;
+      const height = 160;
+      const padding = 8;
+      const points = values.map((value, index) => {
+        const x = padding + (index / (values.length - 1)) * (width - padding * 2);
+        const y = height - padding - ((value - minValue) / range) * (height - padding * 2);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      });
+
+      const first = values[0];
+      const last = values[values.length - 1];
+      const changePct = first ? ((last - first) / first) * 100 : 0;
+      const lineColor = changePct >= 0 ? "var(--ok)" : "var(--bad)";
+
+      const svgNs = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(svgNs, "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("preserveAspectRatio", "none");
+      svg.classList.add("portfolio-chart");
+      const polyline = document.createElementNS(svgNs, "polyline");
+      polyline.setAttribute("points", points.join(" "));
+      polyline.setAttribute("fill", "none");
+      polyline.setAttribute("stroke", lineColor);
+      polyline.setAttribute("stroke-width", "2");
+      polyline.setAttribute("stroke-linejoin", "round");
+      polyline.setAttribute("stroke-linecap", "round");
+      svg.appendChild(polyline);
+      portfolioHistoryChartWrap.appendChild(svg);
+
+      const startLabel = document.createElement("span");
+      startLabel.textContent = `${formatLocalTime(snapshots[0].captured_at)} | ${formatMoney(first)}`;
+      const endLabel = document.createElement("span");
+      const arrow = changePct >= 0 ? "▲" : "▼";
+      endLabel.innerHTML = `${formatLocalTime(snapshots[snapshots.length - 1].captured_at)} | ${formatMoney(last)} <span class="${changePct >= 0 ? "ok" : "bad"}">${arrow} ${Math.abs(changePct).toFixed(2)}%</span>`;
+      portfolioHistorySummary.appendChild(startLabel);
+      portfolioHistorySummary.appendChild(endLabel);
+    }
+
+    portfolioHistoryRangeControls.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-range]");
+      if (!button) {
+        return;
+      }
+      portfolioHistoryRange = button.dataset.range;
+      Array.from(portfolioHistoryRangeControls.querySelectorAll("[data-range]")).forEach((candidate) => {
+        candidate.classList.toggle("active", candidate === button);
+      });
+      renderPortfolioHistoryChart();
+    });
+
+    // ---------------------------------------------------------------------
+    // News -- lazy-loaded only when the News tab is opened or Refresh is
+    // clicked, not part of refreshStatus()'s Promise.all, so it never blocks
+    // or slows down every other panel's refresh (see the design doc).
+    // ---------------------------------------------------------------------
+
+    let newsLoadedOnce = false;
+
+    function newsSymbolsFromInput() {
+      return newsSymbols.value
+        .split(",")
+        .map((symbol) => symbol.trim().toUpperCase())
+        .filter(Boolean)
+        .join(",");
+    }
+
+    async function loadNews() {
+      loadNewsButton.disabled = true;
+      setBadge(newsBadge, "Loading", "warn");
+      try {
+        const symbolsParam = newsSymbolsFromInput();
+        const query = symbolsParam ? `?symbols=${encodeURIComponent(symbolsParam)}&limit=20` : "?limit=20";
+        const payload = await getJson(`/news${query}`);
+        renderNews(payload.news || []);
+        setBadge(newsBadge, `${(payload.news || []).length} Articles`, (payload.news || []).length ? "ok" : "warn");
+      } catch (error) {
+        newsList.textContent = "";
+        const empty = document.createElement("p");
+        empty.className = "chart-empty";
+        empty.textContent = "News is not available yet on this backend.";
+        newsList.appendChild(empty);
+        setBadge(newsBadge, "Not available", "warn");
+      } finally {
+        loadNewsButton.disabled = false;
+      }
+    }
+
+    function renderNews(articles) {
+      newsList.textContent = "";
+      if (!articles.length) {
+        const empty = document.createElement("p");
+        empty.className = "chart-empty";
+        empty.textContent = "No recent articles for these symbols.";
+        newsList.appendChild(empty);
+        return;
+      }
+      articles.forEach((article) => {
+        const item = document.createElement("div");
+        item.className = "news-item";
+
+        const headline = document.createElement("p");
+        headline.className = "news-headline";
+        const link = document.createElement("a");
+        link.href = article.url || "#";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = article.headline || "(untitled)";
+        headline.appendChild(link);
+        item.appendChild(headline);
+
+        const meta = document.createElement("div");
+        meta.className = "news-meta";
+        const symbolsText = (article.symbols || []).join(", ");
+        meta.textContent = [article.source, formatLocalTime(article.created_at), symbolsText].filter(Boolean).join(" | ");
+        item.appendChild(meta);
+
+        if (article.summary) {
+          const summary = document.createElement("p");
+          summary.className = "news-summary";
+          summary.textContent = article.summary;
+          item.appendChild(summary);
+        }
+
+        newsList.appendChild(item);
+      });
+    }
+
+    loadNewsButton.addEventListener("click", loadNews);
 
     async function reconcilePaperOrder(queueId) {
       setBadge(responseBadge, "Reconciling", "warn");
@@ -2673,7 +3095,13 @@
     applyAssetClassToTicket();
     assetClass.addEventListener("change", applyAssetClassToTicket);
     viewTabs.forEach((button) => {
-      button.addEventListener("click", () => setActiveView(button.dataset.viewTab));
+      button.addEventListener("click", () => {
+        setActiveView(button.dataset.viewTab);
+        if (button.dataset.viewTab === "news" && !newsLoadedOnce) {
+          newsLoadedOnce = true;
+          loadNews();
+        }
+      });
     });
     themeToggle.addEventListener("click", () => {
       setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");

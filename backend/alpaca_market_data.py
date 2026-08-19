@@ -241,7 +241,7 @@ def fetch_option_contracts(
         "expiration_date_gte": expiration_gte,
         "expiration_date_lte": expiration_lte,
         "type": OPTION_TYPES.get(str(option_type or "").upper()),
-        "limit": limit,
+        "limit": max(1, min(50, limit)),
     }
     rows = _paged(
         "/v2/options/contracts",
@@ -349,3 +349,44 @@ def _number(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# News — Alpaca's first-party News API (Benzinga-sourced)
+# ---------------------------------------------------------------------------
+
+
+def fetch_news(symbols: list[str], *, limit: int = 20) -> dict:
+    """GET https://data.alpaca.markets/v1beta1/news via alpaca_data_request.
+
+    Same credentials as market data (alpaca_credentials()); a single request,
+    not the exhaustive-pagination helper other fetch_* functions here use --
+    the caller wants at most `limit` recent articles, not every article Alpaca
+    has ever indexed for these symbols. Returns the raw Alpaca response shape:
+    {"news": [...], "next_page_token": ...}. Each article carries headline,
+    summary, source, url, created_at, symbols, images, passed through as
+    Alpaca returns them rather than reshaped, since those are already the
+    fields a News tab needs.
+    """
+    credentials = alpaca_credentials()
+    if credentials is None:
+        raise AlpacaDataError("missing_credentials", "ALPACA_API_KEY_ID / ALPACA_SECRET_KEY are not configured")
+
+    normalized_symbols = [symbol.strip().upper() for symbol in symbols if symbol and symbol.strip()]
+    params = {
+        "symbols": ",".join(normalized_symbols) if normalized_symbols else None,
+        "limit": max(1, min(50, limit)),
+        "sort": "desc",
+    }
+    response = _request_with_retry("/v1beta1/news", params, credentials=credentials)
+    if not response.get("ok"):
+        raise AlpacaDataError(
+            response.get("reason") or "alpaca_request_failed",
+            _message(response),
+            status_code=response.get("status_code"),
+        )
+    payload = response.get("data") or {}
+    return {
+        "news": payload.get("news") or [],
+        "next_page_token": payload.get("next_page_token"),
+    }
