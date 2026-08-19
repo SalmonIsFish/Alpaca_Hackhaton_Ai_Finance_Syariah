@@ -21,6 +21,7 @@ from opportunity_scanner import scan_opportunities
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
 from portfolio_store import ensure_portfolio_tables, open_position_quantity, portfolio_snapshot, sync_filled_order
 from shariah_candidate import build_shariah_candidate
+from shariah_explain import explain_symbol
 from shariah_trace import describe_approval
 from trading_modes import trading_mode_status
 from watchlist_store import (
@@ -946,6 +947,7 @@ def home() -> dict:
             "/opportunities",
             "/opportunity-alerts",
             "/agent/evaluate",
+            "/stock/{symbol}/explain",
             "/paper/preview",
             "/paper/approval",
             "/paper/execute/{queue_id}",
@@ -1017,6 +1019,16 @@ def stock_profile(symbol: str) -> dict:
         return stock_profile_snapshot(connection, symbol)
     finally:
         connection.close()
+
+
+@app.get("/stock/{symbol}/explain")
+def stock_explain(symbol: str) -> dict:
+    """Verdict -> rule fired -> fiqh basis -> citation, for the Shariah Trace panel.
+
+    Explains a screening decision; it never makes one. Carries a live SEC fetch
+    per call until the screening store lands -- see NEXT_STEPS.md.
+    """
+    return explain_symbol(symbol)
 
 
 @app.get("/investment-committee")

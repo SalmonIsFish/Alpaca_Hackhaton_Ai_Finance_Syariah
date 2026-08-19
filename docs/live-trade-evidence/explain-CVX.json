@@ -1,0 +1,116 @@
+{
+  "symbol": "CVX",
+  "as_of": "2026-08-19T10:01:33.336950+00:00",
+  "company": "CHEVRON CORP",
+  "exchange": "NYSE",
+  "verdict": {
+    "status": "COMPLIANT",
+    "tradeable": true,
+    "statement": "debt 13.3% and cash 2.2% of total assets, both under 33%"
+  },
+  "rule": {
+    "id": "sc_my_sac.financial_ratios",
+    "tier": 2,
+    "tier_name": "financial_ratios",
+    "label": "SC/SAC financial-ratio screen",
+    "fired": "debt 13.3% and cash 2.2% of total assets, both under 33%",
+    "tests": [
+      {
+        "name": "interest_bearing_debt_ratio",
+        "label": "interest-bearing debt / total assets",
+        "value_pct": 13.3029,
+        "limit_pct": 33.0,
+        "comparator": "<",
+        "passed": true,
+        "margin_pct": 19.6971,
+        "citation": {
+          "source": "docs/shariah-policy/screening-criteria-breakdown.md",
+          "section": "2. Financial Ratio Benchmarks - Debt over total assets",
+          "quote": "Debt only includes interest-bearing debt whereas Islamic financing or sukuk is excluded from the calculation.",
+          "kind": "regulatory_methodology"
+        }
+      },
+      {
+        "name": "conventional_cash_ratio",
+        "label": "conventional cash / total assets",
+        "value_pct": 2.2484,
+        "limit_pct": 33.0,
+        "comparator": "<",
+        "passed": true,
+        "margin_pct": 30.7516,
+        "citation": {
+          "source": "docs/shariah-policy/screening-criteria-breakdown.md",
+          "section": "2. Financial Ratio Benchmarks - Cash over total assets",
+          "quote": "Cash only includes cash placed in conventional accounts and instruments, whereas cash placed in Islamic accounts and instruments is excluded from the calculation.",
+          "kind": "regulatory_methodology"
+        }
+      }
+    ],
+    "narrowest_margin_pct": 19.6971
+  },
+  "fiqh_basis": [
+    {
+      "principle": "Riba",
+      "claim": "Interest-bearing debt and conventional interest-bearing deposits are the two balance-sheet channels through which riba enters an otherwise permissible business. The SAC caps each at a strict 33% of total assets.",
+      "citation": {
+        "source": "docs/shariah-policy/screening-criteria-breakdown.md",
+        "section": "2. Financial Ratio Benchmarks (exact numbers)",
+        "quote": "Each ratio, which is intended to measure riba and riba-based elements within a company's statements of financial position, must be less than 33%.",
+        "kind": "regulatory_methodology"
+      }
+    },
+    {
+      "principle": "Riba al-Nasiyah",
+      "claim": "Interest on borrowing is a predetermined, guaranteed increase over principal in return for deferral - the core prohibited mechanism.",
+      "citation": {
+        "source": "docs/shariah-policy/Riba.md",
+        "work": "Usmani, Introduction to Islamic Finance; Visser, Islamic Finance: Principles and Practice",
+        "quote": "riba refers to the charging or paying of interest on loans... strictly forbidden (haram) because it guarantees an unearned, risk-free profit",
+        "kind": "secondary_summary"
+      }
+    },
+    {
+      "principle": "Equity ownership",
+      "claim": "Share ownership is permissible in the first place because the shareholder bears genuine ownership risk in a real business.",
+      "citation": {
+        "source": "docs/shariah-policy/Equity-stock-ownership.md",
+        "kind": "secondary_summary"
+      }
+    }
+  ],
+  "evidence": {
+    "filing": {
+      "form": "10-K",
+      "report_date": "2025-12-31",
+      "total_assets": 324012000000.0
+    },
+    "interest_bearing_debt": {
+      "value": 43103000000.0,
+      "xbrl_concepts": [
+        "LongTermDebtAndCapitalLeaseObligations",
+        "LongTermDebtCurrent",
+        "ShortTermBorrowings"
+      ]
+    },
+    "conventional_cash": {
+      "value": 7285000000.0,
+      "xbrl_concepts": [
+        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+        "MarketableSecuritiesCurrent"
+      ]
+    }
+  },
+  "provenance": {
+    "provider": "SEC_EDGAR",
+    "methodology": "SC_MY_SAC",
+    "methodology_label": "Securities Commission Malaysia, Shariah Advisory Council (SC/SAC)",
+    "report_date": "2025-12-31",
+    "screened_at": "2026-08-19T10:01:33.336968+00:00",
+    "limitations": [
+      "Business activity is approximated by the company's single SEC SIC code, which is one primary-industry label and cannot see a secondary non-compliant revenue line.",
+      "XBRL does not distinguish Islamic instruments from conventional ones, so both ratios count sukuk and Islamic deposits as conventional and are overstated.",
+      "Ratios anchor on the latest annual filing, so they lag the current balance sheet."
+    ]
+  },
+  "decision_rule": "External NON_COMPLIANT, UNKNOWN, or ERROR results remain rejected; notes explain but cannot override."
+}
