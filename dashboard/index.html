@@ -501,6 +501,44 @@
       line-height: 1.4;
     }
 
+    .trace-step-tests {
+      display: grid;
+      gap: 6px;
+      margin: 2px 0;
+    }
+
+    .trace-test-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+      flex-wrap: wrap;
+    }
+
+    .trace-citation-kind {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .trace-citation-kind.kind-primary {
+      color: var(--ok);
+      background: var(--ok-bg);
+      border: 1px solid rgba(52, 211, 153, 0.42);
+    }
+
+    .trace-citation-kind.kind-secondary {
+      color: var(--warn);
+      background: var(--warn-bg);
+      border: 1px solid rgba(251, 191, 36, 0.42);
+    }
+
     .trace-empty {
       margin: 0;
       color: var(--muted);
@@ -1424,11 +1462,6 @@
     // string, so this stays in sync with the backend without needing the /explain
     // endpoint. Once GET /stock/{symbol}/explain exists, its response replaces this
     // entirely -- see hackathon/alpaca-2026/EXPLAIN_ENDPOINT_CONTRACT.md.
-    const UNDERLYING_CITATION = {
-      fiqh_basis: "SC Malaysia / SAC two-tier screening: business activity by SIC code, then interest-bearing debt/assets and conventional cash/assets ratios each under 33%.",
-      citation: "docs/shariah-policy/screening-criteria-breakdown.md",
-    };
-
     const STRUCTURE_CITATIONS = {
       "asset-backed; ownership precedes the sale of a right": {
         fiqh_basis: "Ownership precedes the sale of a right, satisfying the possession requirement (covered call).",
@@ -1484,63 +1517,139 @@
     };
 
     function lookupCitation(table, rationale, fallback) {
-      return table[(rationale || "").trim()] || fallback || { fiqh_basis: rationale || "-", citation: "SHARIAH_GATE_NOTES.md" };
+      return table[(rationale || "").trim()] || fallback || null;
     }
 
-    // Client-side fallback: parse the flat shariah_trace string built by
-    // shariah_trace.describe_approval() into the same {gate, label, verdict,
-    // rule_fired, fiqh_basis, citation} shape the /explain endpoint will return,
-    // so the panel is useful before that endpoint exists and upgrades in place
-    // once it does.
-    function parseTraceToSteps(trace) {
-      const steps = [];
-      const underlyingMatch = trace.match(/^(\S+): underlying=([A-Z_]+) \(([^)]*)\)/);
-      if (underlyingMatch) {
-        steps.push({
-          gate: "underlying",
-          label: "Underlying Shariah Screen",
-          verdict: underlyingMatch[2],
-          rule_fired: `Screened via ${underlyingMatch[3]}`,
-          fiqh_basis: UNDERLYING_CITATION.fiqh_basis,
-          citation: UNDERLYING_CITATION.citation,
-        });
-      }
+    // GET /stock/{symbol}/explain (backend/shariah_explain.py) only explains the
+    // company-level screen -- it has no concept of option-structure or account
+    // gates. Those two stay on this client-side parse of the flat shariah_trace
+    // string (citations mirrored from SHARIAH_GATE_NOTES.md / shariah_trace.py's
+    // rationale dicts) permanently, not as a stopgap.
+    function parseFallbackCards(trace) {
+      const cards = [];
       const structureMatch = trace.match(/structure=(\S+) -> (PASS|REJECT) \(([^)]*)\)/);
       if (structureMatch) {
         const cite = lookupCitation(STRUCTURE_CITATIONS, structureMatch[3], STRUCTURE_CITATION_FALLBACK);
-        steps.push({
+        cards.push({
           gate: "option_structure",
           label: "Option Structure Gate",
-          verdict: structureMatch[2],
-          rule_fired: `${structureMatch[1]}: ${structureMatch[3]}`,
-          fiqh_basis: cite.fiqh_basis,
-          citation: cite.citation,
+          verdictText: structureMatch[2],
+          verdictOk: structureMatch[2] === "PASS",
+          ruleLabel: null,
+          ruleFired: `${structureMatch[1]}: ${structureMatch[3]}`,
+          tests: null,
+          fiqhItems: cite ? [{ principle: null, claim: cite.fiqh_basis, citation: { source: cite.citation, kind: "secondary_summary" } }] : [],
+          provenance: null,
         });
       }
       const accountMatch = trace.match(/account=(\S+) -> (PASS|REJECT) \(([^)]*)\)/);
       if (accountMatch) {
         const cite = lookupCitation(ACCOUNT_CITATIONS, accountMatch[3], null);
-        steps.push({
+        cards.push({
           gate: "account",
           label: "Account Riba Gate",
-          verdict: accountMatch[2],
-          rule_fired: `${accountMatch[1]} account: ${accountMatch[3]}`,
-          fiqh_basis: cite.fiqh_basis,
-          citation: cite.citation,
+          verdictText: accountMatch[2],
+          verdictOk: accountMatch[2] === "PASS",
+          ruleLabel: null,
+          ruleFired: `${accountMatch[1]} account: ${accountMatch[3]}`,
+          tests: null,
+          fiqhItems: cite ? [{ principle: null, claim: cite.fiqh_basis, citation: { source: cite.citation, kind: "secondary_summary" } }] : [],
+          provenance: null,
         });
       }
-      return steps;
+      return cards;
     }
 
-    function renderTraceSteps(steps, sourceLabel) {
+    // Underlying-gate card before the live /explain response has loaded (or if
+    // it fails), parsed from the same flat trace string. Replaced in place by
+    // cardFromExplain() once the live call resolves.
+    function fallbackUnderlyingCard(trace) {
+      const match = trace.match(/^(\S+): underlying=([A-Z_]+) \(([^)]*)\)/);
+      if (!match) {
+        return null;
+      }
+      return {
+        gate: "underlying",
+        label: "Underlying Shariah Screen",
+        verdictText: match[2],
+        verdictOk: match[2] === "PASS",
+        ruleLabel: null,
+        ruleFired: `Screened via ${match[3]}`,
+        tests: null,
+        fiqhItems: [{
+          principle: null,
+          claim: "SC Malaysia / SAC two-tier screening: business activity by SIC code, then interest-bearing debt/assets and conventional cash/assets ratios each under 33%.",
+          citation: { source: "docs/shariah-policy/screening-criteria-breakdown.md", kind: "regulatory_methodology" },
+        }],
+        provenance: null,
+      };
+    }
+
+    // Normalizes a live GET /stock/{symbol}/explain payload into the shared card
+    // shape. Two deliberate design choices from backend/shariah_explain.py to
+    // preserve here, not omissions to "fix":
+    //  - No colour field. margin_pct per test and rule.narrowest_margin_pct carry
+    //    that instead, since a colour would imply permission the binary verdict
+    //    alone should grant -- render them as plain numbers, not a red/yellow/green
+    //    scale.
+    //  - `tradeable` is false for UNKNOWN and ERROR verdicts too, not just
+    //    NON_COMPLIANT -- the badge follows `verdict.tradeable` directly rather
+    //    than special-casing "COMPLIANT" as the only truthy status.
+    function cardFromExplain(explain) {
+      const verdict = explain.verdict || {};
+      const rule = explain.rule;
+      return {
+        gate: "underlying",
+        label: "Underlying Shariah Screen",
+        verdictText: verdict.status || "UNKNOWN",
+        verdictOk: verdict.tradeable === true,
+        ruleLabel: rule ? rule.label : null,
+        ruleFired: verdict.statement || (rule ? rule.fired : null) || "-",
+        tests: rule && rule.tests && rule.tests.length ? rule.tests : null,
+        narrowestMarginPct: rule ? rule.narrowest_margin_pct : null,
+        fiqhItems: explain.fiqh_basis || [],
+        provenance: explain.provenance || null,
+      };
+    }
+
+    // citation.kind distinguishes a primary regulatory source from a secondary
+    // paraphrase (docs/shariah-policy/ notes summarizing Usmani/Visser) -- surfaced
+    // as a small tag so a viewer can tell them apart at a glance, per
+    // shariah_explain.py's "Citation honesty" docstring.
+    function appendCitation(container, citation) {
+      if (!citation || !citation.source) {
+        return;
+      }
+      const line = document.createElement("p");
+      line.className = "trace-step-citation";
+      const sourceParts = [citation.source, citation.section, citation.work].filter(Boolean);
+      line.textContent = `Source: ${sourceParts.join(" -- ")}`;
+      if (citation.kind) {
+        const kindTag = document.createElement("span");
+        const isPrimary = citation.kind === "regulatory_methodology";
+        kindTag.className = `trace-citation-kind ${isPrimary ? "kind-primary" : "kind-secondary"}`;
+        kindTag.textContent = isPrimary ? "Regulatory methodology" : "Secondary summary";
+        line.appendChild(document.createTextNode(" "));
+        line.appendChild(kindTag);
+      }
+      container.appendChild(line);
+      if (citation.quote) {
+        const quote = document.createElement("p");
+        quote.className = "trace-step-fiqh";
+        quote.textContent = `“${citation.quote}”`;
+        container.appendChild(quote);
+      }
+    }
+
+    function renderTraceCards(cards, sourceLabel) {
       shariahTraceSteps.textContent = "";
-      if (!steps || !steps.length) {
+      if (!cards || !cards.length) {
         const empty = document.createElement("p");
         empty.className = "trace-empty";
         empty.textContent = "Run agents and approve or reject to see the gate chain's reasoning here.";
         shariahTraceSteps.appendChild(empty);
       } else {
-        steps.forEach((step) => {
+        cards.forEach((step) => {
           const card = document.createElement("div");
           card.className = "trace-step";
 
@@ -1550,31 +1659,64 @@
           label.className = "trace-step-label";
           label.textContent = step.label || step.gate || "Gate";
           const badge = document.createElement("span");
-          const verdictOk = step.verdict === "PASS";
-          badge.className = `badge ${verdictOk ? "ok" : "bad"}`;
-          badge.textContent = step.verdict || "UNKNOWN";
+          badge.className = `badge ${step.verdictOk ? "ok" : "bad"}`;
+          badge.textContent = step.verdictText || "UNKNOWN";
           head.appendChild(label);
           head.appendChild(badge);
           card.appendChild(head);
 
+          if (step.ruleLabel) {
+            const ruleLabelEl = document.createElement("p");
+            ruleLabelEl.className = "trace-step-label";
+            ruleLabelEl.textContent = step.ruleLabel;
+            card.appendChild(ruleLabelEl);
+          }
+
           const rule = document.createElement("p");
           rule.className = "trace-step-rule";
-          rule.textContent = step.rule_fired || "-";
+          rule.textContent = step.ruleFired || "-";
           card.appendChild(rule);
 
-          if (step.fiqh_basis) {
-            const fiqh = document.createElement("p");
-            fiqh.className = "trace-step-fiqh";
-            fiqh.textContent = step.fiqh_basis;
-            card.appendChild(fiqh);
+          if (step.tests && step.tests.length) {
+            const testsWrap = document.createElement("div");
+            testsWrap.className = "trace-step-tests";
+            step.tests.forEach((test) => {
+              const row = document.createElement("div");
+              row.className = "trace-test-row";
+              const passBadge = document.createElement("span");
+              passBadge.className = `badge ${test.passed ? "ok" : "bad"}`;
+              passBadge.textContent = test.passed ? "PASS" : "FAIL";
+              const detail = document.createElement("span");
+              detail.textContent = `${test.label}: ${test.value_pct}% ${test.comparator} ${test.limit_pct}% (margin ${test.margin_pct}pp)`;
+              row.appendChild(passBadge);
+              row.appendChild(detail);
+              testsWrap.appendChild(row);
+              appendCitation(testsWrap, test.citation);
+            });
+            card.appendChild(testsWrap);
+            if (step.narrowestMarginPct != null) {
+              const margin = document.createElement("p");
+              margin.className = "trace-step-fiqh";
+              margin.textContent = `Narrowest margin to the limit: ${step.narrowestMarginPct}pp`;
+              card.appendChild(margin);
+            }
           }
 
-          if (step.citation) {
-            const citation = document.createElement("p");
-            citation.className = "trace-step-citation";
-            citation.textContent = `Source: ${step.citation}`;
-            card.appendChild(citation);
-          }
+          (step.fiqhItems || []).forEach((item) => {
+            if (item.principle) {
+              const principle = document.createElement("p");
+              principle.className = "trace-step-label";
+              principle.textContent = item.principle;
+              card.appendChild(principle);
+            }
+            if (item.claim) {
+              const claim = document.createElement("p");
+              claim.className = "trace-step-fiqh";
+              claim.textContent = item.claim;
+              card.appendChild(claim);
+            }
+            appendCitation(card, item.citation);
+          });
 
           shariahTraceSteps.appendChild(card);
         });
@@ -1587,14 +1729,12 @@
       }
     }
 
-    async function fetchExplainSteps(symbol, { structure } = {}) {
+    async function fetchExplain(symbol) {
       if (!symbol) {
         return null;
       }
-      const query = structure ? `?structure=${encodeURIComponent(structure)}` : "";
       try {
-        const payload = await getJson(`/stock/${encodeURIComponent(symbol)}/explain${query}`);
-        return Array.isArray(payload.steps) ? payload.steps : null;
+        return await getJson(`/stock/${encodeURIComponent(symbol)}/explain`);
       } catch (error) {
         return null;
       }
@@ -1615,21 +1755,27 @@
         accountMatch ? (accountMatch[2] === "PASS" ? "ok" : "bad") : "",
       );
 
-      const fallbackSteps = parseTraceToSteps(trace);
-      renderTraceSteps(fallbackSteps, fallbackSteps.length ? "Source: parsed from approval trace (backend /explain endpoint not yet available)" : "");
-
       const symbol = approval.symbol || currentPreview?.symbol;
-      const structure = isOptionTicket() ? optionStrategy.value.toLowerCase() : undefined;
-      const explainSteps = await fetchExplainSteps(symbol, { structure });
-      if (explainSteps && explainSteps.length) {
-        renderTraceSteps(explainSteps, `Source: GET /stock/${symbol}/explain (live)`);
+      const otherCards = parseFallbackCards(trace);
+      const fallbackUnderlying = fallbackUnderlyingCard(trace);
+      renderTraceCards(
+        [fallbackUnderlying, ...otherCards].filter(Boolean),
+        fallbackUnderlying ? `Underlying: loading live GET /stock/${symbol}/explain... Structure/Account: parsed from approval trace (not covered by that endpoint).` : "",
+      );
+
+      const explain = await fetchExplain(symbol);
+      if (explain && explain.verdict) {
+        renderTraceCards(
+          [cardFromExplain(explain), ...otherCards],
+          `Underlying: live GET /stock/${symbol}/explain. Structure/Account: parsed from approval trace (not covered by that endpoint).`,
+        );
       }
     }
 
     function resetGateFields() {
       setMetric(optionStructureStatus, "Not applicable");
       setMetric(accountShariahStatus, "Not applicable");
-      renderTraceSteps([], "");
+      renderTraceCards([], "");
     }
 
     function formatPct(value) {
