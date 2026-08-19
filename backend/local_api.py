@@ -18,9 +18,11 @@ from config import load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
+from option_strategy_api import propose_option_strategy
 from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
 from portfolio_store import ensure_portfolio_tables, open_position_quantity, portfolio_snapshot, sync_filled_order
 from shariah_candidate import build_shariah_candidate
+from shariah_explain import explain_symbol
 from shariah_trace import describe_approval
 from trading_modes import trading_mode_status
 from watchlist_store import (
@@ -946,6 +948,8 @@ def home() -> dict:
             "/opportunities",
             "/opportunity-alerts",
             "/agent/evaluate",
+            "/stock/{symbol}/explain",
+            "/stock/{symbol}/option-strategy",
             "/paper/preview",
             "/paper/approval",
             "/paper/execute/{queue_id}",
@@ -1017,6 +1021,31 @@ def stock_profile(symbol: str) -> dict:
         return stock_profile_snapshot(connection, symbol)
     finally:
         connection.close()
+
+
+@app.get("/stock/{symbol}/option-strategy")
+def stock_option_strategy(symbol: str, strategy: str | None = None) -> dict:
+    """Propose a Level 1 contract. Selecting is not approving -- see next_step.
+
+    Account facts come from broker_account_context, the same resolver the approval
+    path uses, so settled cash (never buying power) backs a cash-secured put.
+    """
+    connection = db()
+    try:
+        account = broker_account_context(connection, {"symbol": symbol, "asset_class": "option"})
+    finally:
+        connection.close()
+    return propose_option_strategy(symbol, account=account, strategy=strategy)
+
+
+@app.get("/stock/{symbol}/explain")
+def stock_explain(symbol: str) -> dict:
+    """Verdict -> rule fired -> fiqh basis -> citation, for the Shariah Trace panel.
+
+    Explains a screening decision; it never makes one. Carries a live SEC fetch
+    per call until the screening store lands -- see NEXT_STEPS.md.
+    """
+    return explain_symbol(symbol)
 
 
 @app.get("/investment-committee")

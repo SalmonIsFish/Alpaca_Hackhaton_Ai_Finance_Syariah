@@ -3,7 +3,7 @@
 import argparse
 from datetime import date, timedelta
 
-from tiingo_prices import fetch_eod_prices
+from market_data import fetch_eod_prices
 from us_strategy import evaluate_us_s001
 
 

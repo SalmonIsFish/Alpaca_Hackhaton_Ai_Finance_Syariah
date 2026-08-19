@@ -15,6 +15,7 @@ override one. The decision rule, from `backend/explain_compliance.py`, is:
 | `Equity-stock-ownership.md` | Why share ownership is permissible in the first place |
 | `Related.md` | Cross-links between the principles |
 | `screening-criteria-breakdown.md` | The quantitative thresholds the screen applies |
+| `margin-account-policy.md` | Why the broker account is capped at 1x, and what that does and does not claim |
 | `universe-dataset-README.md`, `source-reconciliation-2026-05.md` | Provenance of the universe dataset |
 
 The screening universe itself lives at `data/shariah-universe/2026-05-29.json` — the
