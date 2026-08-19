@@ -1,0 +1,7 @@
+run = "bash backend/replit_start.sh"
+entrypoint = "backend/replit_app.py"
+modules = ["python-3.11"]
+
+[[ports]]
+localPort = 8080
+externalPort = 80
