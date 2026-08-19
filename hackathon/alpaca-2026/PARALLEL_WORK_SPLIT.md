@@ -117,6 +117,56 @@ will), that file stays Terminal 2's exclusively — Terminal 1 never edits it.
 Terminal 3 has no collision risk with either — it only writes new files under
 `hackathon/alpaca-2026/research/`.
 
+## Tooling — plugins and MCP servers to actually use
+
+Added 2026-08-20. Plugins are installed on this machine but went almost entirely unused across
+every terminal this session — everything got done through raw Bash/git/manual verification
+instead. Some of that manual work is exactly what a plugin exists to do better. This section is
+concrete about which plugin, for which situation, so "I could look that up" turns into actually
+looking it up.
+
+**Terminal 1 (frontend):**
+- **`playwright` MCP — use this, not a claim.** Multiple reports this session said "tested in a
+  real browser" or "verified in a real browser" without the manager being able to check it
+  independently. Playwright can actually navigate the dashboard, click through the Shariah Trace
+  panel, screenshot it, and read the console for errors — do that and report what it actually
+  showed, not what you expect it would show.
+- **`frontend-design` skill** — load it before any real visual/UX decision on the dashboard (the
+  trace panel, the portfolio charts), not just for layout code.
+- **`astral` (ruff)** — applies automatically via the PostToolUse hook now; no action needed, but
+  `/ruff` is available for an explicit full-file pass if wanted.
+
+**Terminal 2 (backend):**
+- **`context7` MCP — use this before trusting memory on an API's behavior.** The quant-agent bug
+  this session (silently reading Tiingo instead of the configured provider) and the margin-account
+  confusion both trace back to assuming how an API behaves rather than checking. Before writing
+  code against Alpaca's REST API, the MCP server's tool surface, or FastAPI internals, pull current
+  docs with `context7` rather than relying on training-data recall.
+- **`superpowers:systematic-debugging`** — load it at the start of any real bug hunt, not partway
+  through. It formalizes the same approach that already found the quant-agent and margin bugs;
+  use it deliberately instead of arriving at it by accident.
+- **`superpowers:test-driven-development`** — matches this repo's own convention (write the test,
+  mutation-check it, then implement) already documented in `CLAUDE.md`.
+- **`pyright-lsp` + `astral` (ruff)** — automatic now; a red squiggle or hook-caught lint issue is
+  worth reading, not clicking past.
+- **`security-guidance` skill** — load it before touching anything credential- or
+  account-provisioning-adjacent (`provision_cash_account.py`-style scripts, `.env` handling).
+
+**Terminal 3 (research):** mostly not applicable — this role's actual tools (`WebFetch`,
+`WebSearch`) are already being used correctly and were what caught the AAOIFI/IIFA citation
+errors. `context7` doesn't apply (no code library docs involved in fiqh research).
+
+**Manager / coordinator (next session in this role):**
+- **`code-review` skill** — use it for structured review of what a terminal reports, instead of
+  ad hoc manual diff-reading every time. This session's manual verification pattern (independently
+  re-running claims against the real broker, re-checking citations) was the right instinct; the
+  skill formalizes it and catches things a manual pass might miss.
+- **`security-guidance` skill** — load it specifically before signing off on anything touching the
+  Alpaca account, credentials, or broker-facing code.
+- **`superpowers:verification-before-completion`** — matches the standing rule already in effect
+  this session (verify before accepting any terminal's claim as done); load it explicitly rather
+  than reinventing the same discipline each time.
+
 ## Merge checkpoint
 
 Whichever terminal finishes a milestone first merges into `master` (or a shared integration
