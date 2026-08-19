@@ -1,13 +1,13 @@
 # Shariah Methodology Appendix — DRAFT FOR SUBMISSION
 
-**Status:** Draft for user review and editorial choice  
+**Status:** Plan selected — Option A chosen for this submission cycle  
 **Source Base:** `fiqh-primary-sources.md` independent research  
 **Audience:** Hackathon judges, potential Shariah advisors  
 **Purpose:** Transparent positioning of the fiqh minority position, not assertion of settled consensus
 
 ---
 
-## OPTION A: Direct Minority Position Framing (Recommended for Credibility)
+## OPTION A: Direct Minority Position Framing — SELECTED FOR SUBMISSION
 
 ### Shariah Compliance Methodology: Transparent Minority Position
 
@@ -83,13 +83,19 @@ The project is defensible, but it represents an **active frontier of Islamic fin
 
 ---
 
-## OPTION B: Governance Engine Reframing (Higher Originality, Higher Risk)
+## OPTION B: Governance Engine Reframing — CONSIDERED BUT DEFERRED
 
-**Editorial note:** One independent council review suggested repositioning the entire product narrative from "this is halal" to "a multi-school governance engine that lets users decide." This option preserves the minority fiqh position but changes the submission's *framing* to emphasize transparency and user agency over Shariah certainty. It is presented here as an alternative positioning strategy, not as a recommendation. Read council_output_post_merge.md for context.
+**Status:** Not chosen for this submission cycle. Worth revisiting only if time permits after live trade, frontend reconciliation, and hosting deployment are complete.
+
+**Why deferred:** Option B (building a "Strictness Level" UI toggle with multiple Shariah schools) requires working UI implementation, not just narrative reframing. Until that toggle is built as functional code, Option B is the same fiqh position in different words. Given the priority sequence (get one real trade through the broker → reconcile `/explain` endpoint mismatch → deploy hosting), building new UI features is exactly what the project has been instructed to defer. Option B is intellectually interesting but operationally premature for this cycle.
+
+**Keep or revisit?** Keep this option in the document (it's solid thinking). Revisit it post-hackathon or in a second iteration only if there is demonstrable spare time after the mechanical blockers are solved and one real trade has executed end-to-end.
+
+**For reference:** One independent council review suggested repositioning the entire product narrative from "this is halal" to "a multi-school governance engine that lets users decide." This option preserves the minority fiqh position but changes the submission's *framing* to emphasize transparency and user agency over Shariah certainty. Read council_output_post_merge.md for context.
 
 ---
 
-### Alternative: Amanah Trader as a Multi-School Governance Engine
+### Alternative (Deferred): Amanah Trader as a Multi-School Governance Engine
 
 #### Core Claim (Alternative to Option A)
 Rather than positioning Amanah as "a halal trading system," position it as **"a governance and transparency engine that surfaces the Shariah reasoning behind a trade, allowing the user or their own scholar to make an informed judgment."**
@@ -141,31 +147,42 @@ A minimal approach would be to mention the options framework briefly ("we permit
 
 ---
 
-## Recommended Choice for User
+## Submission Plan: Option A Selected
 
-**Option A (Direct Minority Position)** is recommended because:
-1. It clearly states what mainstream Islamic finance says (Usmani, IIFA)
-2. It explains why the project took a different position (asset backing, hedging principles)
-3. It explicitly acknowledges the limits ("this is research, not a fatwa")
-4. It invites real scholars to review ("this should be submitted to a Shariah Advisory Board")
-5. It lets judges see the reasoning rather than just the conclusion
+**Option A (Direct Minority Position)** is the chosen approach for this submission cycle. Rationale:
 
-This approach scores well on Presentation (transparency) and Originality (novel minority position) while managing risk through honest framing.
+1. **Credibility first:** It clearly states what mainstream Islamic finance says (Usmani, IIFA) before presenting the alternative
+2. **Transparent reasoning:** It explains why the project took a different position (asset backing, hedging principles)
+3. **Honest limitations:** It explicitly acknowledges the limits ("this is research, not a fatwa")
+4. **Pathway forward:** It invites real scholars to review ("this should be submitted to a Shariah Advisory Board")
+5. **Judges see the work:** It lets judges evaluate your reasoning rather than just accepting your conclusion
 
-**Option B (Governance Engine)** is a bold alternative if scope allows and you want to maximize Originality at the cost of added complexity. It repositions the entire product narrative to emphasize transparency over certainty.
+This approach is strong on Presentation (transparency) and Originality (defensible minority position) while managing credibility risk through honest framing. Judges with Islamic finance background will respect the straightforwardness more than any attempt to soft-pedal the scholarly disagreement.
 
-**Option C (Minimal Disclosure)** should not be chosen.
+### Option B (Governance Engine) — Deferred
+
+Option B is intellectually sound but operationally deferred. It requires building a working "Strictness Level" UI toggle and multi-school gate configurations. Until that code exists, Option B is narrative repositioning without substance. The project's current priority is: 
+1. Get one real trade through the broker end-to-end
+2. Reconcile the `/explain` endpoint contract between frontend/backend
+3. Deploy hosting and finish demo
+
+Once those are done, Option B becomes worth revisiting if time permits. For this cycle, Option A is the decision.
+
+### Option C (Minimal Disclosure) — Not Chosen
+
+Minimal disclosure risks credibility loss if judges fact-check and discover you never mentioned that Mufti Usmani explicitly forbids this. Avoid.
 
 ---
 
 ## How to Use This Appendix
 
-### For the Hackathon Submission
-1. Choose Option A or Option B above
-2. Edit for your specific claims and wording
-3. Include 1–2 supporting diagrams (e.g., the gate chain with fiqh citations)
+### For the Hackathon Submission (Using Option A)
+1. Take the Option A section above (starts at "Shariah Compliance Methodology: Transparent Minority Position")
+2. Edit for your specific claims, wording, and confidence level
+3. Include 1–2 supporting diagrams if space allows (e.g., the gate chain with fiqh citations)
 4. Place this as an appendix after the main technical writeup
-5. Reference it in the pitch: "See Shariah Methodology Appendix for detailed sourcing and limitations"
+5. Reference it in the pitch deck: "See Shariah Methodology Appendix for detailed sourcing and limitations"
+6. Keep Option B in the document as reference (good thinking to preserve, marked clearly as deferred)
 
 ### For Shariah Advisory Board Review (Post-Hackathon)
 - Commission a real scholar to review this appendix
@@ -198,7 +215,8 @@ Add to the gate logic:
 | **This Project's Position** | Extrapolates from hedging principles and contract law. Defensible but not explicit in any single source. | ⚠ Editorial: Does this framing match your intent? |
 | **Why This Is Minority** | Factually accurate (no AAOIFI standard, no named scholar explicitly permits these structures). | ✓ Factual |
 | **Limitations** | Written to be conservative (research prototype, not fatwa). Adjust tone if you want to assert more confidence. | ⚠ Editorial: Confidence level? |
-| **Option B (Governance Engine)** | Novel framing from council review, not your stated position. Present as alternative or remove. | ⚠ Editorial: Do you want to reposition as governance engine? |
+| **Option A (Chosen)** | This is the selected approach for submission. Edit for voice and tone. | ✅ Decided |
+| **Option B (Deferred)** | Kept in document as reference but not pursued this cycle (requires new UI work; defer until mechanical blockers solved). | ✅ Decided |
 
 ---
 
@@ -217,11 +235,13 @@ See fiqh-primary-sources.md for full bibliography and evaluation of source relia
 
 ---
 
-## Next Steps for User
+## Next Steps for User (Option A Selected)
 
-1. **Choose Option A or B** — decide which framing aligns with your submission strategy
-2. **Edit for voice and confidence** — adjust the tone (defensive vs. assertive) to match your project's positioning
-3. **Coordinate with Terminal 2** — ensure the gate implementation matches the methodology described
-4. **Add diagrams** (optional) — a visual showing the gate chain with fiqh citations strengthens presentation
-5. **Plan Shariah Advisory review** — even if not pre-submission, decide now whether you'll pursue formal review post-hackathon
-6. **Proofread against primary sources** — I've verified Usmani and IIFA, but you should independently verify before submission
+1. **Extract Option A content** — use the "Shariah Compliance Methodology: Transparent Minority Position" section as your appendix draft
+2. **Edit for voice and confidence level** — adjust tone to match your project's positioning (currently written conservatively; can be more assertive if desired)
+3. **Verify primary sources** — I've verified Usmani and IIFA against primary sources, but independently confirm these before submitting
+4. **Coordinate with Terminal 2** — ensure the gate implementation in code matches the methodology described in the appendix
+5. **Add diagrams** (if space permits) — a visual showing the gate chain with fiqh citations and verdict flow strengthens presentation
+6. **Proofread for clarity** — read it as a judge would; make sure the minority-position framing is clear without sounding evasive
+
+**Option B (Governance Engine):** Keep it in your reference file, but don't pursue UI implementation this cycle. Revisit only after: live trade end-to-end → `/explain` endpoint reconciliation → hosting deployment → demo working. If spare time remains after those, consider building the toggle.
