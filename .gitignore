@@ -27,3 +27,6 @@ desktop.ini
 *.bak
 *.orig
 *.rej
+
+# Reviewed previews staged by check_paper_order.py
+backend/staged_preview_*.json
