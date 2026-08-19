@@ -448,6 +448,73 @@
       overflow-wrap: anywhere;
     }
 
+    .trace-steps {
+      display: grid;
+      gap: 10px;
+    }
+
+    .trace-step {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--bg-soft);
+      overflow-wrap: anywhere;
+    }
+
+    .trace-step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .trace-step-label {
+      font-size: var(--font-sm);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--subtle);
+    }
+
+    .trace-step-rule {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .trace-step-fiqh {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .trace-step-citation {
+      margin: 0;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .trace-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .trace-source-note {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 11px;
+      font-style: italic;
+    }
+
     .subsection-heading {
       margin-top: 18px;
     }
@@ -843,7 +910,10 @@
             <span id="marketOverviewBadge" class="badge warn">Not checked</span>
           </div>
           <div id="marketOverviewSummary" class="summary-grid"></div>
-          <h2 class="subsection-heading">Opportunities</h2>
+          <div class="panel-head subsection-heading">
+            <h2>Opportunities</h2>
+            <span id="opportunityBadge" class="badge warn">Not scanned</span>
+          </div>
           <div class="opportunity-controls">
             <label>Watchlist
               <input id="opportunitySymbols" type="text" value="AAPL, AMZN, TSLA, CRM, INTC, AMD, ASML, TSM, SHOP, PANW, ANET">
@@ -959,8 +1029,11 @@
             </div>
           </div>
           <div class="approval-box">
-            <span class="panel-meta">Shariah Trace</span>
-            <p id="shariahTraceText" class="trace-text">Run agents and approve or reject to see the gate chain's reasoning here.</p>
+            <span class="panel-meta">Shariah Trace &mdash; verdict &rarr; rule fired &rarr; fiqh basis &rarr; citation</span>
+            <div id="shariahTraceSteps" class="trace-steps">
+              <p class="trace-empty">Run agents and approve or reject to see the gate chain's reasoning here.</p>
+            </div>
+            <p id="shariahTraceSource" class="trace-source-note" hidden></p>
           </div>
         </section>
 
@@ -1136,7 +1209,8 @@
     const optionExpiration = document.querySelector("#optionExpiration");
     const optionStructureStatus = document.querySelector("#optionStructureStatus");
     const accountShariahStatus = document.querySelector("#accountShariahStatus");
-    const shariahTraceText = document.querySelector("#shariahTraceText");
+    const shariahTraceSteps = document.querySelector("#shariahTraceSteps");
+    const shariahTraceSource = document.querySelector("#shariahTraceSource");
     const marketOverviewBadge = document.querySelector("#marketOverviewBadge");
     const marketOverviewSummary = document.querySelector("#marketOverviewSummary");
     const executionAuditBadge = document.querySelector("#executionAuditBadge");
@@ -1350,9 +1424,189 @@
       document.querySelector("#side").value = option ? "SELL" : "BUY";
     }
 
-    function renderApprovalGateBreakdown(approval) {
+    // Fallback citation lookup, sourced from hackathon/alpaca-2026/SHARIAH_GATE_NOTES.md.
+    // Keyed on the rationale text shariah_trace.py already substitutes into the trace
+    // string, so this stays in sync with the backend without needing the /explain
+    // endpoint. Once GET /stock/{symbol}/explain exists, its response replaces this
+    // entirely -- see hackathon/alpaca-2026/EXPLAIN_ENDPOINT_CONTRACT.md.
+    const UNDERLYING_CITATION = {
+      fiqh_basis: "SC Malaysia / SAC two-tier screening: business activity by SIC code, then interest-bearing debt/assets and conventional cash/assets ratios each under 33%.",
+      citation: "docs/shariah-policy/screening-criteria-breakdown.md",
+    };
+
+    const STRUCTURE_CITATIONS = {
+      "asset-backed; ownership precedes the sale of a right": {
+        fiqh_basis: "Ownership precedes the sale of a right, satisfying the possession requirement (covered call).",
+        citation: "Usmani, Introduction to Islamic Finance -- Equity, stock ownership.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "100% cash-collateralized purchase commitment (Arboun/Wa'd); no margin financing": {
+        fiqh_basis: "Framed as Arboun/Wa'd, a backed purchase commitment; full cash backing avoids leverage-financed exposure (cash-secured put).",
+        citation: "Riba.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "defensive hedge on an owned position, not speculative": {
+        fiqh_basis: "Defensive use on an owned asset, not the Maysir pattern of wealth transferred without productive output (protective put).",
+        citation: "Maysir.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "combined put+call hedge on an owned position": {
+        fiqh_basis: "Combination of the two allowed legs above (covered call + cash-secured put) applied to the same owned position (collar).",
+        citation: "SHARIAH_GATE_NOTES.md -- Collar row",
+      },
+      "naked/speculative structure (gharar/maysir)": {
+        fiqh_basis: "No asset or full cash backing behind the leg -- matches the prohibited pattern of excessive uncertainty and pure speculation.",
+        citation: "Gharar.md / Maysir.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "margin-financing leg introduces riba": {
+        fiqh_basis: "Margin/interest-bearing financing is the core prohibited mechanism.",
+        citation: "Riba.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "margin financing not permitted": {
+        fiqh_basis: "Margin/interest-bearing financing is the core prohibited mechanism.",
+        citation: "Riba.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "unrecognized structure, fails closed by policy": {
+        fiqh_basis: "Unknown structure -- fails closed rather than defaulting to permitted.",
+        citation: "SHARIAH_GATE_NOTES.md -- fail-closed principle",
+      },
+    };
+    const STRUCTURE_CITATION_FALLBACK = {
+      fiqh_basis: "Collateral or ownership requirement not met for this structure -- see the allow-list conditions.",
+      citation: "SHARIAH_GATE_NOTES.md -- proposed structure allow-list",
+    };
+
+    const ACCOUNT_CITATIONS = {
+      "no standing riba exposure": {
+        fiqh_basis: "Cash account carries no margin capability, so there is no standing riba exposure.",
+        citation: "Riba.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "margin capability is a standing riba exposure": {
+        fiqh_basis: "Carrying margin capability at all is a standing riba exposure, regardless of whether a given order draws on it.",
+        citation: "Riba.md, via SHARIAH_GATE_NOTES.md",
+      },
+      "unrecognized account type, fails closed by policy": {
+        fiqh_basis: "Unknown account type -- fails closed rather than defaulting to permitted.",
+        citation: "SHARIAH_GATE_NOTES.md -- fail-closed principle",
+      },
+    };
+
+    function lookupCitation(table, rationale, fallback) {
+      return table[(rationale || "").trim()] || fallback || { fiqh_basis: rationale || "-", citation: "SHARIAH_GATE_NOTES.md" };
+    }
+
+    // Client-side fallback: parse the flat shariah_trace string built by
+    // shariah_trace.describe_approval() into the same {gate, label, verdict,
+    // rule_fired, fiqh_basis, citation} shape the /explain endpoint will return,
+    // so the panel is useful before that endpoint exists and upgrades in place
+    // once it does.
+    function parseTraceToSteps(trace) {
+      const steps = [];
+      const underlyingMatch = trace.match(/^(\S+): underlying=([A-Z_]+) \(([^)]*)\)/);
+      if (underlyingMatch) {
+        steps.push({
+          gate: "underlying",
+          label: "Underlying Shariah Screen",
+          verdict: underlyingMatch[2],
+          rule_fired: `Screened via ${underlyingMatch[3]}`,
+          fiqh_basis: UNDERLYING_CITATION.fiqh_basis,
+          citation: UNDERLYING_CITATION.citation,
+        });
+      }
+      const structureMatch = trace.match(/structure=(\S+) -> (PASS|REJECT) \(([^)]*)\)/);
+      if (structureMatch) {
+        const cite = lookupCitation(STRUCTURE_CITATIONS, structureMatch[3], STRUCTURE_CITATION_FALLBACK);
+        steps.push({
+          gate: "option_structure",
+          label: "Option Structure Gate",
+          verdict: structureMatch[2],
+          rule_fired: `${structureMatch[1]}: ${structureMatch[3]}`,
+          fiqh_basis: cite.fiqh_basis,
+          citation: cite.citation,
+        });
+      }
+      const accountMatch = trace.match(/account=(\S+) -> (PASS|REJECT) \(([^)]*)\)/);
+      if (accountMatch) {
+        const cite = lookupCitation(ACCOUNT_CITATIONS, accountMatch[3], null);
+        steps.push({
+          gate: "account",
+          label: "Account Riba Gate",
+          verdict: accountMatch[2],
+          rule_fired: `${accountMatch[1]} account: ${accountMatch[3]}`,
+          fiqh_basis: cite.fiqh_basis,
+          citation: cite.citation,
+        });
+      }
+      return steps;
+    }
+
+    function renderTraceSteps(steps, sourceLabel) {
+      shariahTraceSteps.textContent = "";
+      if (!steps || !steps.length) {
+        const empty = document.createElement("p");
+        empty.className = "trace-empty";
+        empty.textContent = "Run agents and approve or reject to see the gate chain's reasoning here.";
+        shariahTraceSteps.appendChild(empty);
+      } else {
+        steps.forEach((step) => {
+          const card = document.createElement("div");
+          card.className = "trace-step";
+
+          const head = document.createElement("div");
+          head.className = "trace-step-head";
+          const label = document.createElement("span");
+          label.className = "trace-step-label";
+          label.textContent = step.label || step.gate || "Gate";
+          const badge = document.createElement("span");
+          const verdictOk = step.verdict === "PASS";
+          badge.className = `badge ${verdictOk ? "ok" : "bad"}`;
+          badge.textContent = step.verdict || "UNKNOWN";
+          head.appendChild(label);
+          head.appendChild(badge);
+          card.appendChild(head);
+
+          const rule = document.createElement("p");
+          rule.className = "trace-step-rule";
+          rule.textContent = step.rule_fired || "-";
+          card.appendChild(rule);
+
+          if (step.fiqh_basis) {
+            const fiqh = document.createElement("p");
+            fiqh.className = "trace-step-fiqh";
+            fiqh.textContent = step.fiqh_basis;
+            card.appendChild(fiqh);
+          }
+
+          if (step.citation) {
+            const citation = document.createElement("p");
+            citation.className = "trace-step-citation";
+            citation.textContent = `Source: ${step.citation}`;
+            card.appendChild(citation);
+          }
+
+          shariahTraceSteps.appendChild(card);
+        });
+      }
+      if (sourceLabel) {
+        shariahTraceSource.textContent = sourceLabel;
+        shariahTraceSource.hidden = false;
+      } else {
+        shariahTraceSource.hidden = true;
+      }
+    }
+
+    async function fetchExplainSteps(symbol, { structure } = {}) {
+      if (!symbol) {
+        return null;
+      }
+      const query = structure ? `?structure=${encodeURIComponent(structure)}` : "";
+      try {
+        const payload = await getJson(`/stock/${encodeURIComponent(symbol)}/explain${query}`);
+        return Array.isArray(payload.steps) ? payload.steps : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    async function renderApprovalGateBreakdown(approval) {
       const trace = approval.shariah_trace || "";
-      shariahTraceText.textContent = trace || "No trace available for this approval.";
       const structureMatch = trace.match(/structure=\S+ -> (PASS|REJECT)/);
       setMetric(
         optionStructureStatus,
@@ -1365,12 +1619,22 @@
         accountMatch ? `${accountMatch[1]} / ${accountMatch[2]}` : "Not applicable",
         accountMatch ? (accountMatch[2] === "PASS" ? "ok" : "bad") : "",
       );
+
+      const fallbackSteps = parseTraceToSteps(trace);
+      renderTraceSteps(fallbackSteps, fallbackSteps.length ? "Source: parsed from approval trace (backend /explain endpoint not yet available)" : "");
+
+      const symbol = approval.symbol || currentPreview?.symbol;
+      const structure = isOptionTicket() ? optionStrategy.value.toLowerCase() : undefined;
+      const explainSteps = await fetchExplainSteps(symbol, { structure });
+      if (explainSteps && explainSteps.length) {
+        renderTraceSteps(explainSteps, `Source: GET /stock/${symbol}/explain (live)`);
+      }
     }
 
     function resetGateFields() {
       setMetric(optionStructureStatus, "Not applicable");
       setMetric(accountShariahStatus, "Not applicable");
-      shariahTraceText.textContent = "Run agents and approve or reject to see the gate chain's reasoning here.";
+      renderTraceSteps([], "");
     }
 
     function formatPct(value) {
