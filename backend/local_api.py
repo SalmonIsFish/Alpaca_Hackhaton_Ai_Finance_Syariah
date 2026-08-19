@@ -928,6 +928,16 @@ def quote_snapshot_for_preview(evaluation: dict, request: PaperPreviewRequest) -
     return snapshot
 
 
+def mounted_dashboard_url() -> str | None:
+    """The dashboard's URL when something has mounted it onto this app.
+
+    backend/replit_app.py mounts dashboard/ at /dashboard for the combined
+    deployment; running local_api alone does not. Reported only when the mount
+    is actually present, so this never advertises a path that would 404.
+    """
+    return "/dashboard/" if any(getattr(route, "path", None) == "/dashboard" for route in app.routes) else None
+
+
 @app.get("/")
 def home() -> dict:
     settings = load_settings()
@@ -935,6 +945,9 @@ def home() -> dict:
     return {
         "name": "Amanah Trader Local API",
         "status": "running",
+        # First field a browser sees on the deployed root, which otherwise shows
+        # only this JSON. Additive: the route keeps its existing shape.
+        "dashboard_url": mounted_dashboard_url(),
         "routes": [
             "/health",
             "/system/mode",
