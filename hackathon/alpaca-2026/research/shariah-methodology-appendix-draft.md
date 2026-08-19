@@ -114,7 +114,7 @@ Rather than positioning Amanah as "a halal trading system," position it as **"a 
 
 A "Shariah School" or "Strictness Level" toggle in the dashboard, e.g.:
 - **"Permissive" (current system):** Allows covered calls, cash-secured puts, collars (minority position)
-- **"Mainstream/AAOIFI":** Disables all options entirely, limits to stock screening and risk management only
+- **"Mainstream/IIFA":** Disables all options entirely, limits to stock screening and risk management only (aligns with IIFA Resolution 238 and Mufti Usmani's position)
 - **"Conservative/Hanafi":** Even stricter (e.g., additional ratios or business activity screens)
 
 When a user selects "Mainstream," the options tab disables automatically, demonstrating that the system *understands* the scholarly disagreement rather than pretending consensus exists.
