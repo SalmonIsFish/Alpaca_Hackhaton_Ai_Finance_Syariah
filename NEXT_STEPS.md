@@ -1,6 +1,6 @@
 # Amanah Trader — Current State and Next Steps
 
-Last updated: August 19, 2026 (Asia/Kuala_Lumpur).
+Last updated: August 20, 2026 (Asia/Kuala_Lumpur).
 
 Read `CLAUDE.md` for architecture and safety rules. This file is the running status: what
 works, what doesn't, and what to do next.
@@ -9,7 +9,8 @@ works, what doesn't, and what to do next.
 
 Amanah Trader is a local-first Shariah-compliant paper-trading control system on **Alpaca**.
 The broker adapter, market data, gate chain, approval flow, real Shariah screening, and option
-strike selection are all built and tested. No trade has run end to end against the real broker.
+strike selection are all built and tested. **One trade has run end to end against the real
+broker** — see the evidence trail below.
 
 Current mode:
 
@@ -18,30 +19,65 @@ Current mode:
 - `PAPER_EXECUTION_ENABLED=true` — **the system is armed**; broker submission is possible
 - Live trading disabled by construction (`ALPACA_MODE=paper`, hardcoded paper base URL)
 
-Alpaca paper account in use: suffix `0TCX`, `MARGIN`, options trading level 3.
+Alpaca paper account in use: suffix `0TCX`, **`CASH`** (`multiplier: 1`, `shorting_enabled:
+false`), options trading level 3. This is the *test* account, not the dedicated hackathon one.
 
-## ⚠ Blocker to resolve before any live demo
+## ✅ Resolved: the margin-account blocker
 
-**The configured paper account is `MARGIN`, and `account_shariah_gate` rejects margin accounts
-outright — for every order, including plain equity.** The gate is doing exactly what it was
-designed to do: *"carrying margin capability at all is a standing Riba exposure regardless of
-whether a given order draws on it."* But it means that on account `0TCX`, every approval
-returns `margin_account_not_permitted` and nothing can ever be traded.
+`account_shariah_gate` rejected the paper account outright because it was `MARGIN`, so every
+order — including plain equity — returned `margin_account_not_permitted`. Resolved on
+2026-08-19 **without touching the gate**.
 
-This has not been hit yet only because no trade has run end to end. It will be the first thing
-that happens when one does. Options are:
+Alpaca offers no cash accounts ("No, we do not offer cash accounts. All accounts are set up as
+margin accounts" — <https://alpaca.markets/support/alpaca-cash-accounts>), so the preferred
+remedy did not exist. `backend/provision_cash_account.py --no-shorting --apply` instead reduced
+the account to a cash-equivalent posture:
 
-1. Provision an Alpaca paper account configured as **CASH** and point `.env` at it. Preferred —
-   it satisfies the gate honestly, and a cash account is what the whole design assumes.
-2. Confirm whether Alpaca even offers a cash paper account. If it does not, this needs a
-   documented, scholar-reviewable decision about what `account_type` the system should treat a
-   paper margin account as — **not** a code change that weakens the gate.
+| field | before | after |
+|---|---|---|
+| `multiplier` | 4 | 1 |
+| `buying_power` | 400000 | 100000 (== settled `cash`) |
+| `shorting_enabled` | true | false |
+| `check_alpaca_status` | `MARGIN` | `CASH` |
+| `account_shariah_gate` | `REJECT` | `PASS cash_account_no_margin_exposure` |
 
-Do not "fix" this by relaxing `account_shariah_gate`. Verify the live account type first with
-`check_config.py` / `check_alpaca_status`; the `MARGIN` value above comes from this document,
-not from a fresh check.
+`account_shariah_gate` and `account_type_from_multiplier` are byte-for-byte unchanged; the
+latter already mapped `multiplier <= 1` to `CASH` and predates this problem. The account moved
+to satisfy the gate, not the reverse. `provision_cash_account.py` is one-directional by
+construction — it refuses to raise the multiplier or re-enable shorting.
+
+The reasoning, **and the argument against it at equal length**, is recorded in
+`docs/shariah-policy/margin-account-policy.md`, status *pending scholar review*. The honest
+claim is "no margin capability is extended to this account", **not** "this is a cash account" —
+it remains contractually a margin account and the 1x cap is revocable. Submission copy and demo
+narration must not overstate it. `local_api.broker_account_context` re-reads `multiplier` from
+the live account on every approval, so if the cap were raised the gate would resume rejecting
+immediately.
 
 ## What works
+
+**End-to-end live trade — proven once** *(2026-08-19, test account `0TCX`)*
+
+A real order went preview → approval → `EXECUTE PAPER` → fill → reconcile → ledger against
+`https://paper-api.alpaca.markets` over the `alpaca_mcp` transport, nothing mocked. Order
+`bc939dcd-edfd-428f-9227-272d2521300f` (`client_order_id amanah-queue-5`, queue 5) filled
+1 CVX at **206.89** against a **207.60** limit, and booked as `quantity 1.0, average_cost
+206.89, cost_basis 206.89, realized_pnl 0.0, account_suffix 0TCX, account_type CASH`.
+
+Verified three ways — local ledger, the broker's own `avg_entry_price`, and the order's
+`filled_avg_price` all read 206.89. The agreement is meaningful because fill and limit
+differed: `sync_filled_order` computes `float(dealt_avg_price or price)`, and `0.0` being
+falsy means a null fill price would have silently booked the *limit* and looked plausible.
+A second reconcile returned `ALREADY_SYNCED` with quantity still 1.0.
+
+| evidence file | what it shows |
+|---|---|
+| `docs/live-trade-evidence/before-CVX.json` | the gate refusing a real order — `REJECT margin_account_not_permitted` while the account was still `MARGIN` |
+| `docs/live-trade-evidence/after-CVX.json` | first real broker submission after the account fix |
+| `docs/live-trade-evidence/reconciled-CVX.json` | the fill reconciled into the ledger, `outcome: VERIFIED`, `problems: []` |
+
+The `before` file is worth keeping for the demo: it is the gate blocking a real order on a real
+broker for a stated fiqh reason, which is the project's whole thesis in one artefact.
 
 **Shariah screening — real data** — `sec_edgar_screen.py` *(new, this session)*
 
@@ -118,50 +154,42 @@ not from a fresh check.
 
 ## What is broken or missing
 
-**1. Screening is live, but every call is uncached — and a second Zoya path remains.**
-`agents/shariah_agent.py` now routes the US path to `sec_edgar_screen.check_us_symbol` and
-reports `provider: SEC_EDGAR`. Gate decisions run on real filings; randomized sandbox data is
-out of the decision path. Two things follow:
+**1. Screening is live, but every call is uncached and unthrottled.**
+`agents/shariah_agent.py` routes the US path to `sec_edgar_screen.check_us_symbol`, reporting
+`provider: SEC_EDGAR`. A screen is a live SEC fetch of up to ~4.7 MB taking ~0.7–2 s, and
+`/paper/preview`, `/stock/{symbol}/profile` and `/stock/{symbol}/explain` all pay it on every
+call. `sec_request` has no throttle at all, against SEC guidance of ~10 req/s. This is the
+single strongest argument for building the screening store next, and it is now the largest
+open backend item.
 
-- **No cache, no throttle.** A screen is a live SEC fetch of up to ~4.7 MB taking ~0.7–2 s.
-  `/paper/preview` and `/stock/{symbol}/profile` now pay that on every call, and a repeated
-  lookup re-downloads. This is precisely what the screening store below fixes, and it is the
-  strongest argument for building it next.
-- **`us_strategy.py` still imports `zoya_compliance` directly.** It is CLI-only
-  (`check_us_strategy.py`) and not reachable from the API, but it is a second screening path
-  to a different provider — exactly what the "one screening record, two views" constraint
-  below forbids. Either route it through `agents.shariah_agent` or delete it.
+*(The second Zoya screening path is closed: `us_strategy.py` and `explain_compliance.py` both
+route through the one entry point, and `test_single_screening_path.py` enforces it with a
+static AST import check so a new parallel path fails a test the moment it is written.)*
 
-**2. The strategy layer has no endpoint.**
-`option_strategy.py` works and is tested, but nothing calls it over HTTP. A caller must supply
-`option_contract` to `/paper/preview` by hand, or use `check_option_strategy.py`.
-`local_api.py` was deliberately left untouched to avoid collisions.
-
-**3. No trade has ever run end to end.**
-Preview → Shariah → risk → approval → `EXECUTE PAPER` → Alpaca → fill → reconcile → ledger has
-never been exercised against the real API. Largest unquantified risk. See the margin blocker
-above — this is what will surface it.
-
-**4. Held positions are never re-screened.**
+**2. Held positions are never re-screened.**
 Every screening call site is on the *order* path. `portfolio_store.py` contains no reference to
-compliance at all. The system screens at the moment you buy and then never looks again. This is
-the subject of the next session — see below.
+compliance at all — the system screens at the moment you buy and then never looks again. This
+is what the screening store below is for.
 
-**5. Options P&L is not tracked locally.**
+**3. Options P&L is not tracked locally.**
 `portfolio_store` models whole shares only. Option fills are audited under their OCC symbol but
-create no position. Alpaca is the source of truth. Deliberate scope decision.
+create no position. Alpaca is the source of truth. Deliberate scope decision, not a defect.
 
-**6. `/explain` endpoint not built.**
-`explain_compliance.py` exists as a CLI combining a screening result with local policy notes,
-under the rule that notes explain but never override. Not exposed over HTTP or in the dashboard.
+**4. No *option* order has run end to end live.**
+The proven live trade was plain equity. Both Level 1 structures are exercised only by
+`test_option_execution_smoke.py` against a mocked `alpaca_request` seam. Since options are the
+hackathon's stated differentiator, one real covered call or cash-secured put through the full
+chain is worth more than any further equity trade.
 
-**7. Demo hosting unsolved.**
-Submission requires the demo on Streamlit, Replit, or Vercel. The current dashboard is a local
-static file against a local FastAPI backend.
+**5. The proven trade lives in a database no deployment can see.**
+`backend/*.db` is gitignored by design, so the CVX position sits only in the
+`.worktrees/live-trade-backend` SQLite file. The deployed Replit instance has its own empty
+database. Any trade meant to appear in the demo must be run **against the deployed instance**,
+not locally. Easy to hit twice; see the demo-trade step below.
 
-**8. Stale Moomoo-era position.**
-`4.0 AAPL` at average cost `323.3487`, account suffix `1740`, in `backend/paper_trading.db`. It
-predates the Alpaca account and will pollute exposure math in the demo.
+**6. The margin fix is pending scholar review.**
+`docs/shariah-policy/margin-account-policy.md` records a decision, not a settled ruling. It is
+the one compliance claim in the project that a knowledgeable judge could reasonably contest.
 
 ## Next session — time-varying compliance
 
@@ -300,35 +328,52 @@ Screen a symbol against real SEC data, or select a contract, without creating an
 
 ## Tests
 
-30 suites pass. Run any of them directly, e.g.:
+**38 suites pass.** There are 39 `test_*.py` files in `backend/`; `test_moomoo.py` is the one
+excluded, and it hangs by design — it drives the moomoo SDK directly to verify a *real* OpenD
+connection, bypassing the `check_moomoo_status()` TCP pre-check that makes every other suite
+fail fast without a gateway running. `CLAUDE.md` lists all 38 explicitly.
 
 ```powershell
 .\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
-.\.venv\Scripts\python.exe backend\test_option_strategy.py
 .\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
+.\.venv\Scripts\python.exe backend\test_single_screening_path.py
 .\.venv\Scripts\python.exe backend\test_repo_defaults.py
 ```
 
-Two suites fail for environmental reasons only, not regressions: `test_moomoo.py` and
-`test_local_api_smoke.py` both try to reach Moomoo OpenD on `127.0.0.1:11111`, which is not
-running. `test_local_api_smoke.py` hangs on the SDK's retry loop rather than failing fast.
+`test_local_api_smoke.py` used to be listed here as an environmental failure. It is not — it
+passes, and has since the Moomoo TCP pre-check landed.
 
 **Convention worth keeping:** when a new test passes on the first run, break the code
-deliberately and confirm it fails. The two suites added this session were each mutation-checked
-that way — 7 mutations against the screen, 12 against the strategy layer, all caught.
+deliberately and confirm it fails. Every suite added recently was mutation-checked that way —
+3 mutations against the quant-agent provider switch, 5 against the `/explain` contract, 6
+against the strategy endpoint, 2 against the single-screening-path check, all caught.
 
 ## Next steps, in order
 
-1. **Resolve the margin-account blocker** above. Nothing can be approved until it is.
-2. **Get one trade through end to end.** Any compliant symbol, one share, full chain. Do this
-   before anything else depends on it working.
-3. **Design the screening store** (approach A above) — answer the three open questions first.
-   The store comes before either surface; re-screening and the research view are both views
-   over it.
-4. **Solve demo hosting.** Prove the deploy path early with a stub.
-5. **Expose the strategy layer** over HTTP, and `GET /stock/{symbol}/explain` plus a dashboard
-   panel showing verdict → rule fired → fiqh basis with citation.
-6. **Clear the stale Moomoo-era position** before demoing the portfolio view.
+1. **Build the screening store.** Approach A above: an EDGAR raw-response cache keyed by CIK,
+   an append-only `shariah_screens` table, and a throttle on `sec_request`. Answer the three
+   open questions first (purification scope, re-screen trigger, cache TTL). This is the largest
+   genuinely open backend item, and every call to `/explain` currently pays for its absence.
+2. **Run the submission demo trade on the dedicated hackathon account, through the deployed
+   Replit instance.** Not locally — see broken/missing #5. Provision the account, confirm
+   `check_alpaca_status` reports `CASH` (apply `provision_cash_account.py` if it does not), then
+   drive preview → approval → `EXECUTE PAPER` → reconcile against the deployment so its own
+   database captures the position.
+3. **Get one Level 1 option order through the live chain** — a covered call needs 100 shares of
+   a Shariah-PASS underlying, a cash-secured put needs settled collateral. Options are the
+   stated differentiator and are the least-proven part of the system.
+4. **Get the margin-account policy in front of a scholar**, or state plainly in the submission
+   that it is unreviewed. It is the most contestable compliance claim in the project.
+5. **Upgrade the fiqh citations from secondary to primary sources.** `shariah_explain.py`
+   already labels each citation `regulatory_methodology` or `secondary_summary`, so the gap is
+   visible in the payload; research notes live under `hackathon/alpaca-2026/research/`.
+6. **Then, and only then, the deferred surfaces:** the position lifecycle view and the
+   pre-purchase research view, both of which are views over the store from step 1.
+
+Completed since the last revision, no longer listed above: the margin-account blocker, the
+first end-to-end live trade, `GET /stock/{symbol}/explain`, `GET /stock/{symbol}/option-strategy`,
+the duplicate Zoya screening path, demo hosting on Replit, and the stale Moomoo-era position
+(cleared; backup at `backend/paper_trading.db.bak-stale-aapl-cleanup`).
 
 ## Standing constraints
 

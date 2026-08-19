@@ -136,27 +136,48 @@ Every test is a plain script with a `main()` that prints `PASS: ...`. No pytest.
 individually:
 
 ```powershell
-.\.venv\Scripts\python.exe backend\test_alpaca_paper_adapter.py
-.\.venv\Scripts\python.exe backend\test_alpaca_market_data.py
-.\.venv\Scripts\python.exe backend\test_alpaca_execution_wiring.py
-.\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
-.\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
-.\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
-.\.venv\Scripts\python.exe backend\test_option_strategy.py
-.\.venv\Scripts\python.exe backend\test_shariah_candidate.py
-.\.venv\Scripts\python.exe backend\test_option_structure_gate.py
+.\.venv\Scripts\python.exe backend\test_account_shariah_agent.py
 .\.venv\Scripts\python.exe backend\test_account_shariah_gate.py
-.\.venv\Scripts\python.exe backend\test_option_fill_ledger.py
-.\.venv\Scripts\python.exe backend\test_repo_defaults.py
-.\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
+.\.venv\Scripts\python.exe backend\test_agent_coordinator.py
+.\.venv\Scripts\python.exe backend\test_alpaca_execution_wiring.py
+.\.venv\Scripts\python.exe backend\test_alpaca_market_data.py
+.\.venv\Scripts\python.exe backend\test_alpaca_news.py
+.\.venv\Scripts\python.exe backend\test_alpaca_paper_adapter.py
+.\.venv\Scripts\python.exe backend\test_alpaca_shariah_wiring.py
+.\.venv\Scripts\python.exe backend\test_approval_workflow.py
 .\.venv\Scripts\python.exe backend\test_execution_audit.py
-.\.venv\Scripts\python.exe backend\test_portfolio_store.py
-.\.venv\Scripts\python.exe backend\test_risk_checks.py
+.\.venv\Scripts\python.exe backend\test_investment_committee.py
 .\.venv\Scripts\python.exe backend\test_local_api_smoke.py
+.\.venv\Scripts\python.exe backend\test_market_overview.py
+.\.venv\Scripts\python.exe backend\test_moomoo_paper_adapter.py
 .\.venv\Scripts\python.exe backend\test_moomoo_status.py
+.\.venv\Scripts\python.exe backend\test_option_execution_smoke.py
+.\.venv\Scripts\python.exe backend\test_option_fill_ledger.py
+.\.venv\Scripts\python.exe backend\test_option_strategy.py
+.\.venv\Scripts\python.exe backend\test_option_strategy_api.py
+.\.venv\Scripts\python.exe backend\test_option_structure_agent.py
+.\.venv\Scripts\python.exe backend\test_option_structure_gate.py
+.\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
+.\.venv\Scripts\python.exe backend\test_portfolio_risk_limits.py
+.\.venv\Scripts\python.exe backend\test_portfolio_snapshot_history.py
+.\.venv\Scripts\python.exe backend\test_portfolio_store.py
+.\.venv\Scripts\python.exe backend\test_positions_api.py
+.\.venv\Scripts\python.exe backend\test_quant_agent_provider.py
+.\.venv\Scripts\python.exe backend\test_repo_defaults.py
+.\.venv\Scripts\python.exe backend\test_risk_checks.py
+.\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
+.\.venv\Scripts\python.exe backend\test_shariah_candidate.py
+.\.venv\Scripts\python.exe backend\test_shariah_explain.py
+.\.venv\Scripts\python.exe backend\test_shariah_trace.py
+.\.venv\Scripts\python.exe backend\test_single_screening_path.py
+.\.venv\Scripts\python.exe backend\test_stock_profile.py
+.\.venv\Scripts\python.exe backend\test_tiingo_prices.py
+.\.venv\Scripts\python.exe backend\test_us_pipeline_fixture.py
+.\.venv\Scripts\python.exe backend\test_watchlist_store.py
 ```
 
-32 suites pass. `check_moomoo_status()` pre-checks TCP reachability before touching the moomoo
+All 38 of those pass. There are 39 `test_*.py` files on disk; `test_moomoo.py` is the one
+excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —
 this is what used to make `test_local_api_smoke.py` and the dashboard's status refresh hang;
 both now complete fast with no Moomoo gateway running. `test_moomoo.py` still hangs by design:
@@ -201,19 +222,50 @@ suite not run as part of the regular list above.
    caller must supply `option_contract` to `/paper/preview` by hand or use
    `check_option_strategy.py`. Selecting is not approving — a selected contract still has to
    clear the whole gate chain, and `test_option_strategy.py` asserts exactly that.
-4. **The end-to-end chain has never run against real Alpaca.** `test_option_execution_smoke.py`
-   now exercises preview → approval → execute for a covered call, an unsupported strategy, a
-   margin account, and an under-collateralized cash-secured put — through the real FastAPI app,
-   with only the `alpaca_request` network seam mocked. That test is what found and fixed two real
-   bugs: `agent_coordinator.evaluate_candidate` unconditionally blocked any non-BUY side, which
-   made both Level 1 strategies (both are sell-to-open) unreachable from `/paper/preview` at all
-   (fixed with an `asset_class` param); and the portfolio risk overlay treated an option's
-   contracts/premium as if they were equity shares/share-price, producing nonsensical exposure
-   percentages that would reject almost any option order once a real position existed (fixed by
-   skipping that equity-specific overlay for `asset_class == "option"` — the option_structure_gate
-   and account_shariah_gate already provide correct option-native sizing). What's still open:
-   nobody has run this against the *real* Alpaca paper API with real credentials — only against a
-   mocked network seam.
+4. **The end-to-end chain has run against real Alpaca — once, on the test account.**
+   On 2026-08-19 a real order went preview → approval → `EXECUTE PAPER` → fill → reconcile →
+   ledger against `https://paper-api.alpaca.markets` over the `alpaca_mcp` transport, with
+   nothing mocked. Order `bc939dcd-edfd-428f-9227-272d2521300f` (`client_order_id
+   amanah-queue-5`, queue 5) filled 1 CVX at **206.89** against a **207.60** limit and booked
+   into `paper_positions` as `quantity 1.0, average_cost 206.89, cost_basis 206.89,
+   realized_pnl 0.0, account_suffix 0TCX, account_type CASH`.
+
+   Verified three ways, which is what makes it evidence rather than a green checkmark: the
+   local ledger, the broker's own position (`avg_entry_price`), and the order's
+   `filled_avg_price` all read 206.89. That agreement matters because the fill price and the
+   limit price differed — `sync_filled_order` computes
+   `float(dealt_avg_price or price)`, and since `0.0` is falsy a null fill price would have
+   silently booked the **limit** and looked entirely plausible. A second reconcile returned
+   `ALREADY_SYNCED` with the quantity still 1.0, so the `UNIQUE(queue_id)` guard holds.
+
+   Evidence trail, all committed:
+
+   | file | what it shows |
+   |---|---|
+   | `docs/live-trade-evidence/before-CVX.json` | the gate refusing a real order — `REJECT margin_account_not_permitted` while the account was still `MARGIN` |
+   | `docs/live-trade-evidence/after-CVX.json` | the first real broker submission after the account fix |
+   | `docs/live-trade-evidence/reconciled-CVX.json` | the fill reconciled into the ledger, `outcome: VERIFIED`, `problems: []` |
+
+   **What this does not prove.** It ran on the *test* paper account (`0TCX`) from a *local*
+   checkout. The submission demo trade still has to happen on the dedicated hackathon account
+   once that is provisioned, and it should be run **against the deployed Replit instance, not
+   locally** — `backend/*.db` is gitignored by design, so a locally-run trade writes to a local
+   SQLite file that the deployed instance never sees. Its positions and fills would simply be
+   absent from the demo. This is not hypothetical: the CVX position above lives in the
+   `.worktrees/live-trade-backend` database and appears in no other checkout. Run the demo
+   trade through the deployed instance so its own database captures the position naturally.
+
+   `test_option_execution_smoke.py` still covers the paths a single live trade cannot: a
+   covered call, an unsupported strategy, a margin account, and an under-collateralized
+   cash-secured put, through the real FastAPI app with only the `alpaca_request` seam mocked.
+   Writing it found and fixed two real bugs — `agent_coordinator.evaluate_candidate`
+   unconditionally blocked any non-BUY side, which made both Level 1 strategies (both
+   sell-to-open) unreachable from `/paper/preview` at all (fixed with an `asset_class` param);
+   and the portfolio risk overlay treated an option's contracts/premium as equity
+   shares/share-price, producing nonsensical exposure percentages that would reject almost any
+   option order once a real position existed (fixed by skipping that equity-specific overlay
+   for `asset_class == "option"` — `option_structure_gate` and `account_shariah_gate` already
+   provide correct option-native sizing).
 
 ## Style
 
