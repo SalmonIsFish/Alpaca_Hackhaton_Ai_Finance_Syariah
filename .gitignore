@@ -6,8 +6,7 @@ backend/*.db
 backend/market_data_cache/
 tmp/
 
-# Local research vault and internal planning notes (not part of the deliverable)
-hackathon/
+# LLM council consult tooling (contains real API keys in its own .env)
 llm-council-skill/
 
 # Git worktrees used during development
