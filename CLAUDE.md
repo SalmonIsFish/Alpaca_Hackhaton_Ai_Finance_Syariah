@@ -177,7 +177,8 @@ individually:
 ```
 
 All 38 of those pass. There are 39 `test_*.py` files on disk; `test_moomoo.py` is the one
-excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before touching the moomoo
+excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before
+touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —
 this is what used to make `test_local_api_smoke.py` and the dashboard's status refresh hang;
 both now complete fast with no Moomoo gateway running. `test_moomoo.py` still hangs by design:
@@ -198,8 +199,11 @@ suite not run as part of the regular list above.
 
 1. **US screening is live on SEC EDGAR, and every call is uncached.** `agents/shariah_agent.py`
    routes the US path to `sec_edgar_screen.check_us_symbol`, reporting `provider: SEC_EDGAR`.
-   Zoya is no longer in the US path; `zoya_compliance.py` remains only for reference, and
-   `us_strategy.py` still imports it directly (a second screening path — see NEXT_STEPS.md).
+   Zoya is no longer in any screening path; `zoya_compliance.py` remains only for reference,
+   imported solely by `check_zoya.py`, whose purpose is checking Zoya. `us_strategy.py` and
+   `explain_compliance.py` both route through the one entry point, and
+   `test_single_screening_path.py` enforces that with a static AST import check, so a new
+   parallel screening path fails a test the moment it is written.
    Read the module docstring before trusting a verdict: business activity is approximated by
    SIC code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
    are overstated. Both approximations err toward rejection.
@@ -213,15 +217,21 @@ suite not run as part of the regular list above.
    diverts option fills to `paper_fills` under the OCC symbol and returns
    `OPTION_FILL_RECORDED` without touching `paper_positions`. Alpaca is the source of truth for
    options P&L. Do not "fix" this by booking contracts as shares — that was a real bug.
-3. **The strategy layer selects but is not wired to an endpoint.** `option_strategy.py` calls
+3. **The strategy layer selects; selecting is not approving.** `option_strategy.py` calls
    `fetch_option_chain` and picks a contract for both Level 1 strategies: 1–7 DTE, the strike
    closest to 4% OTM inside a 2–7% band, filtered for a live bid, a spread under 15% of mid, a
    minimum premium, and a standard 100-share multiplier; sized from owned shares or settled
    cash. It emits an `option_contract` that drops straight into `build_shariah_candidate`, and
-   a `rationale` string narrating the choice. What is missing: no endpoint calls it, so a
-   caller must supply `option_contract` to `/paper/preview` by hand or use
-   `check_option_strategy.py`. Selecting is not approving — a selected contract still has to
-   clear the whole gate chain, and `test_option_strategy.py` asserts exactly that.
+   a `rationale` string narrating the choice.
+
+   It is now reachable over HTTP at `GET /stock/{symbol}/option-strategy`, which resolves
+   account facts through `broker_account_context` (settled cash, never buying power) and
+   returns the proposal plus a `next_step` block: `approved: false`, the four gates not yet
+   run named explicitly, and the exact `/paper/preview` body to post next. A proposed contract
+   has cleared **nothing** — `test_option_strategy_api.py` asserts a proposal can never read as
+   approved, and `test_option_strategy.py` asserts a selected contract still has to clear the
+   whole gate chain. What remains unproven is live: no option order has been through the real
+   broker, only the mocked seam in `test_option_execution_smoke.py`.
 4. **The end-to-end chain has run against real Alpaca — once, on the test account.**
    On 2026-08-19 a real order went preview → approval → `EXECUTE PAPER` → fill → reconcile →
    ledger against `https://paper-api.alpaca.markets` over the `alpaca_mcp` transport, with
