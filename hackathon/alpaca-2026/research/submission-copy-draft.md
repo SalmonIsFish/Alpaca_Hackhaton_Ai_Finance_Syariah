@@ -20,7 +20,7 @@ Amanah Trader is a Shariah-compliant autonomous trading agent that enforces Isla
 
 ### Problem & Opportunity
 
-Mainstream Islamic finance scholarship (including AAOIFI standards and contemporary scholars like Mufti Taqi Usmani) treats conventional options as impermissible due to gharar (excessive contractual uncertainty) and the sale of abstract rights without underlying asset ownership. Hackathon rules mandate options trading for all entrants, creating a hard constraint: a strict Shariah approach would be disqualifying.
+Mainstream Islamic finance scholarship (including the International Islamic Fiqh Academy [IIFA] and contemporary scholars like Mufti Taqi Usmani) treats conventional options as impermissible due to gharar (excessive contractual uncertainty) and the sale of abstract rights without underlying asset ownership. Hackathon rules mandate options trading for all entrants, creating a hard constraint: a strict Shariah approach would be disqualifying.
 
 Rather than dodge this, Amanah Trader takes the opposite approach: it argues that specific option structures—covered calls, cash-secured puts, protective puts, and collars—can be structured as defensible hedging instruments under precise conditions (asset ownership or cash backing, defensive intent, no margin leverage). This position represents a minority scholarly view, not mainstream consensus, and is the central point of intellectual honesty in the submission.
 

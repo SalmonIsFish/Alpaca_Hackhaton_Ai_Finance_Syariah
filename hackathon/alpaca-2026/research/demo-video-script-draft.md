@@ -45,13 +45,13 @@
 
 *"Here's the tension every Shariah-compliant trading system faces:*
 
-*Hackathon rules mandate options trading for all entrants. But mainstream Islamic finance scholarship—including Mufti Taqi Usmani and AAOIFI standards—treats conventional options as impermissible. The objection is gharar: excessive uncertainty in a sale of abstract rights, not an owned asset.*
+*Hackathon rules mandate options trading for all entrants. But mainstream Islamic finance scholarship—including Mufti Taqi Usmani and the International Islamic Fiqh Academy (IIFA)—treats conventional options as impermissible. The objection is gharar: excessive uncertainty in a sale of abstract rights, not an owned asset.*
 
 *Most teams would skip options entirely and disqualify themselves. We took a different approach: we argue that certain option structures—covered calls, cash-secured puts, protective puts, collars—can be permissible when asset-backed and defensive."*
 
 **[VISUAL: Side-by-side comparison could show "Option 1: Avoid & Fail" vs. "Option 2: Gate & Justify"]**
 
-**[TONE NOTE: This is factual (Usmani and AAOIFI positions are verified against primary sources). Delivery can vary—academic vs. conversational.]**
+**[TONE NOTE: This is factual (Usmani's position and IIFA Resolution 238 are verified against primary sources). Delivery can vary—academic vs. conversational.]**
 
 ---
 
@@ -143,13 +143,13 @@
 
 *"One last thing: this system represents a minority position in Islamic finance scholarship.*
 
-*Mufti Taqi Usmani and the 2019 AAOIFI resolution forbid options outright. Our argument—that asset-backed, defensive option structures are defensible—is not mainstream consensus. It's an intellectually honest minority view, grounded in hedging doctrine and supported by classical Islamic contract law analogues.*
+*Mufti Taqi Usmani and the 2019 IIFA Resolution 238 forbid options outright. Our argument—that asset-backed, defensive option structures are defensible—is not mainstream consensus. It's an intellectually honest minority view, grounded in hedging doctrine and supported by classical Islamic contract law analogues.*
 
 *Before this framework ever ran real money, it would need formal Shariah Advisory Board review and co-authorship. This hackathon is a proof-of-concept for the governance model itself: how code can enforce compliance transparently, and how that transparency allows scholars and users to evaluate the reasoning rather than just trusting a black-box verdict.*
 
 *See the Shariah Methodology Appendix for full sourcing and limitations."*
 
-**[VERIFIED FACTS: The minority-position claim is established via fiqh-primary-sources.md research. The Mufti Usmani and AAOIFI 2019 positions are primary-source verified. The Shariah Advisory Board requirement is standard for Islamic finance products. This is honest positioning.]**
+**[VERIFIED FACTS: The minority-position claim is established via fiqh-primary-sources.md research. Mufti Usmani's position and IIFA Resolution 238 (2019) are primary-source verified. The Shariah Advisory Board requirement is standard for Islamic finance products. This is honest positioning.]**
 
 **[TONE NOTE: Editorial choice — how to deliver this honesty message? Direct and academic, or conversational and humble? Both work; pick your voice. The key is that it comes across as genuine transparency, not defensive.]**
 
