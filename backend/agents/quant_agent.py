@@ -2,7 +2,12 @@
 
 from datetime import date, datetime, timezone, timedelta
 
-from tiingo_prices import fetch_eod_prices, read_cache_metadata
+# Route through the provider switch rather than a single vendor: pinning the quant
+# agent to tiingo let a tiingo outage blank the signal while the configured provider
+# (MARKET_DATA_PROVIDER, alpaca by default) was healthy. The on-disk cache is shared
+# by both providers, so cache metadata still comes from tiingo_prices.
+import market_data
+from tiingo_prices import read_cache_metadata
 
 
 def _evaluate_s001_signal(bars: list[dict]) -> dict:
@@ -43,7 +48,7 @@ def _evaluate_s001_signal(bars: list[dict]) -> dict:
 def evaluate_quant(symbol: str, *, allow_fallback: bool = True, allow_stale_cache: bool = False) -> dict:
     end_date = date.today()
     start_date = end_date - timedelta(days=320)
-    bars, source = fetch_eod_prices(
+    bars, source = market_data.fetch_eod_prices(
         symbol,
         start_date.isoformat(),
         end_date.isoformat(),
@@ -67,10 +72,13 @@ def evaluate_quant(symbol: str, *, allow_fallback: bool = True, allow_stale_cach
     }
 
 
+LIVE_SOURCES = {"tiingo", "alpaca", "alpaca_iex"}
+
+
 def data_freshness(symbol: str, source: str) -> dict:
-    if source == "tiingo":
+    if source in LIVE_SOURCES:
         return {"data_freshness": "live", "cache_cached_at": None, "cache_age_hours": None}
-    if not source.startswith("tiingo_cache"):
+    if "_cache" not in source:
         return {"data_freshness": "fixture" if source.startswith("fixture") else "unknown", "cache_cached_at": None, "cache_age_hours": None}
     metadata = read_cache_metadata(symbol)
     cached_at = metadata.get("cached_at")
