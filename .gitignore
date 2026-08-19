@@ -5,6 +5,7 @@ __pycache__/
 backend/*.db
 backend/market_data_cache/
 tmp/
+.ruff_cache/
 
 # LLM council consult tooling (contains real API keys in its own .env)
 llm-council-skill/

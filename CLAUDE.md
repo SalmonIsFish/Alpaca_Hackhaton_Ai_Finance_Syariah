@@ -284,3 +284,25 @@ suite not run as part of the regular list above.
 - Match the surrounding code: small pure functions, dict returns with a `status` key, fail
   closed on anything unknown.
 - Keep `local_api.py` diffs small; it is the file most likely to be touched concurrently.
+
+## Linting and formatting
+
+This project uses Ruff for both linting and formatting. Do not call Black, flake8, isort,
+or pylint. There is no `uv` project here — invoke Ruff through the shared `.venv` directly:
+
+- Lint: `.venv\Scripts\ruff.exe check .`
+- Lint and auto-fix: `.venv\Scripts\ruff.exe check --fix .`
+- Format: `.venv\Scripts\ruff.exe format .`
+- Check formatting without writing: `.venv\Scripts\ruff.exe format --check .`
+
+Ruff configuration lives in `pyproject.toml` under `[tool.ruff]`. Do not add a separate
+`ruff.toml` or `.ruff.toml`. Do not add inline `# noqa` comments without a rule code. The
+rule selection is pinned to Ruff's traditional core set (`E4`, `E7`, `E9`, `F`) rather than
+its current broader defaults — the broader set found ~100 pre-existing findings across
+`backend/` on first run, which were not mass-fixed; expanding the rule set later is a
+deliberate decision, not something to do incidentally while touching an unrelated file.
+
+A `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/ruff_after_edit.py`) runs
+`ruff check --fix` and `ruff format` on whatever `.py` file Claude just wrote or edited —
+scoped to that one file, never the whole repo, so it can't retroactively touch the
+pre-existing findings elsewhere.
