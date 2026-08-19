@@ -201,8 +201,8 @@ This document covers hosting constraints for each platform when running **FastAP
    - Publish to hosted platform (Replit/Streamlit/Vercel)
 
 ### Account Setup Notes
-- **Options approval:** May take 1–2 business days to activate on a new account
-- **Paper account creation:** Instantaneous, but options need separate approval
+- **Options approval:** Paper accounts appear to have options pre-enabled (observed as options_trading_level 3 on account 0TCX with no activation delay). Live accounts may require 1–2 business days. For the hackathon, provision the paper competition account by Aug 27 and verify options are enabled immediately.
+- **Paper account creation:** Instantaneous
 - **Margin vs. Cash:** All Alpaca accounts default to margin (see `alpaca-cash-account.md`)
 
 ---
