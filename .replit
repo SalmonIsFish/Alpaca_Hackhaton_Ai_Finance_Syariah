@@ -38,4 +38,5 @@ waitForPort = 8080
 outputType = "console"
 
 [deployment]
+run = ["bash", "backend/replit_start.sh"]
 deploymentTarget = "cloudrun"
