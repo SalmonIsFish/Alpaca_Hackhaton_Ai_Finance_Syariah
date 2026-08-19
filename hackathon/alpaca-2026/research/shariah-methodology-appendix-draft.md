@@ -28,7 +28,7 @@ The preponderance of contemporary Islamic finance scholarship **forbids options 
 #### This Project's Position
 We propose that **covered calls, cash-secured puts, protective puts, and collars can be structured as permissible defensive hedging instruments** under specific conditions. This position is a **minority scholarly view**, grounded in:
 
-1. **General hedging principles:** IIFA Resolution 224 (2009) permits hedging activities when aligned with Shariah objectives (protection of property, risk management per Maqasid al-Shariah)
+1. **General hedging principles:** IIFA Resolution 224 (2018, Session 8/23) permits hedging activities when aligned with Shariah objectives (protection of property, risk management per Maqasid al-Shariah)
 
 2. **Sami Al-Suwailem's hedging framework** (IRTI, Islamic Development Bank): Permits derivatives for genuine risk management when:
    - The underlying asset is owned or fully cash-backed
@@ -222,14 +222,23 @@ Add to the gate logic:
 
 ## Sources Referenced
 
-All sourced from independent research (fiqh-primary-sources.md):
-- Mufti Muhammad Taqi Usmani: *Permissibility of Certain Financial Contracts* (muftitaqiusmani.com)
-- IIFA Resolution 238 (2019): Hedging Transactions in Islamic Financial Institutions
-- IIFA Resolution 224 (2009): Hedging in Financial Transactions: Principles and Rules
-- Sami Al-Suwailem: *Hedging in Islamic Finance* (IRTI Occasional Paper No. 10)
-- Wa'd/Wa'dan structures: Islamic FX forward documentation (IEFPEDIA, Lexology)
-- Urbun/Arboun: AAOIFI Shariah Standard 53; Islamic finance banking practice
-- Khayar al-Shart: Classical Islamic contract law, modern applications
+### Verified Against Primary Sources ✅
+- **Mufti Muhammad Taqi Usmani:** *Permissibility of Certain Financial Contracts* ([muftitaqiusmani.com](https://muftitaqiusmani.com/en/permissibility-of-certain-financial-contracts/)) — verified
+- **IIFA Resolution 238:** Hedging Transactions in Islamic Financial Institutions (November 2019) — verified
+- **AAOIFI Shariah Standard 53:** Arboun (Earnest Money) — verified at [aaoifi.com/ss-53-arboun-earnest-money](https://aaoifi.com/ss-53-arboun-earnest-money/?lang=en)
+
+### Verified, Correction Needed ⚠️
+- **IIFA Resolution 224:** "On Hedging in Financial Transactions: Principles and Rules," Resolution No. 224(8/23), adopted November 2018 (Session 8/23, 28 Oct – 1 Nov 2018)
+  - *Correction:* Previously cited as "(2009)" — actual date is **2018**. Verified at [iifa-aifi.org/en/6235.html](https://iifa-aifi.org/en/6235.html)
+
+- **Sami Al-Suwailem:** *Hedging in Islamic Finance*, IRTI (The Islamic Research and Teaching Institute) Occasional Paper No. 217 (2006)
+  - *Correction:* Previously cited as "Occasional Paper No. 10" — actual number is **No. 217**. Verified at [econpapers.repec.org](https://econpapers.repec.org/RePEc:ris:irtiop:0217)
+
+### Secondary-Sourced (Not Verified Against Direct Primary Sources) ⚠️
+- **Wa'd/Wa'dan structures:** Referenced in Islamic FX forward documentation and IIFA discussions (IEFPEDIA, Lexology, ISM publications) but sourced primarily from secondary explanatory materials rather than direct IIFA standards or classical fiqh texts
+- **Khayar al-Shart:** Established in classical Islamic contract law (mentioned in Al-Islam.org, Islamic scholarship), but sourced primarily from secondary scholarship on classical fiqh rather than direct classical texts or IIFA standards specifically on modern hedging applications
+
+**Note for submission:** The four structures above (Wa'd, Wa'dan, Urbun, Khayar al-Shart) are real Islamic finance concepts, but their application to modern options-equivalent hedging is a project interpretation, not established doctrine. Mark in the appendix as "explored through Islamic contract law principles" rather than "established precedent."
 
 See fiqh-primary-sources.md for full bibliography and evaluation of source reliability.
 
