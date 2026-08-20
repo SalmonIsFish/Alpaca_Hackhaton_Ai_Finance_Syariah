@@ -76,7 +76,9 @@ def reconcile_paper_order(approval: dict) -> dict:
     if adapter == "alpaca":
         return reconcile_alpaca_paper_order(approval=approval, broker_submission=broker_submission)
     if adapter == "alpaca_mcp":
-        return reconcile_alpaca_mcp_paper_order(approval=approval, broker_submission=broker_submission)
+        return reconcile_alpaca_mcp_paper_order(
+            approval=approval, broker_submission=broker_submission
+        )
     return {
         "status": "ADAPTER_NOT_CONFIGURED",
         "adapter": adapter,
@@ -191,7 +193,9 @@ def submit_alpaca_paper_order(*, approval: dict) -> dict:
 
 
 def reconcile_alpaca_paper_order(*, approval: dict, broker_submission: dict) -> dict:
-    guard = reconcile_preconditions(approval=approval, broker_submission=broker_submission, adapter="alpaca")
+    guard = reconcile_preconditions(
+        approval=approval, broker_submission=broker_submission, adapter="alpaca"
+    )
     if guard["status"] != "PASS":
         return guard["error"]
 
@@ -318,7 +322,11 @@ class AlpacaMcpStdioClient:
     def call_tool(self, name: str, arguments: dict) -> dict:
         response = self._request("tools/call", {"name": name, "arguments": arguments})
         if "error" in response:
-            return {"ok": False, "reason": mcp_error_reason(response["error"]), "data": response["error"]}
+            return {
+                "ok": False,
+                "reason": mcp_error_reason(response["error"]),
+                "data": response["error"],
+            }
         result = response.get("result") or {}
         if result.get("isError"):
             return {"ok": False, "reason": mcp_text(result) or "mcp_tool_error", "data": result}
@@ -444,7 +452,11 @@ def submit_alpaca_mcp_paper_order(*, approval: dict) -> dict:
 
     try:
         account_response = client.call_tool("get_account_info", {})
-        account = paper_account_from_payload(account_response.get("data")) if account_response.get("ok") else None
+        account = (
+            paper_account_from_payload(account_response.get("data"))
+            if account_response.get("ok")
+            else None
+        )
         if account is None:
             return {
                 "status": "ALPACA_ACCOUNT_QUERY_FAILED",
@@ -521,7 +533,9 @@ def submit_alpaca_mcp_paper_order(*, approval: dict) -> dict:
 
 
 def reconcile_alpaca_mcp_paper_order(*, approval: dict, broker_submission: dict) -> dict:
-    guard = reconcile_preconditions(approval=approval, broker_submission=broker_submission, adapter="alpaca_mcp")
+    guard = reconcile_preconditions(
+        approval=approval, broker_submission=broker_submission, adapter="alpaca_mcp"
+    )
     if guard["status"] != "PASS":
         return guard["error"]
 
@@ -541,7 +555,11 @@ def reconcile_alpaca_mcp_paper_order(*, approval: dict, broker_submission: dict)
     broker_order_id = guard["broker_order_id"]
     try:
         account_response = client.call_tool("get_account_info", {})
-        account = paper_account_from_payload(account_response.get("data")) if account_response.get("ok") else None
+        account = (
+            paper_account_from_payload(account_response.get("data"))
+            if account_response.get("ok")
+            else None
+        )
         if account is None:
             return {
                 "status": "ALPACA_ACCOUNT_QUERY_FAILED",
@@ -561,7 +579,10 @@ def reconcile_alpaca_mcp_paper_order(*, approval: dict, broker_submission: dict)
         order = order_response.get("data")
         if not isinstance(order, dict) or not extract_order_id(order):
             return order_not_found(
-                adapter="alpaca_mcp", broker_order_id=broker_order_id, code=guard["code"], account=account
+                adapter="alpaca_mcp",
+                broker_order_id=broker_order_id,
+                code=guard["code"],
+                account=account,
             )
         return reconciliation_result(
             approval=approval,
@@ -626,7 +647,8 @@ def fake_reconcile_paper_order(*, approval: dict, broker_submission: dict) -> di
         "status": "BROKER_SUBMITTED",
         "adapter": "fake",
         "broker_submission": True,
-        "broker_order_id": broker_submission.get("broker_order_id") or f"FAKE-PAPER-{approval['id']}",
+        "broker_order_id": broker_submission.get("broker_order_id")
+        or f"FAKE-PAPER-{approval['id']}",
         "broker_code": broker_submission.get("broker_code") or approval.get("symbol"),
         "order_status": broker_submission.get("order_status", "SUBMITTED"),
         "environment": broker_submission.get("environment", "PAPER"),
@@ -648,7 +670,12 @@ def build_order_plan(approval: dict, *, adapter: str) -> dict:
     def reject(status: str, reason: str) -> dict:
         return {
             "status": "REJECT",
-            "error": {"status": status, "adapter": adapter, "broker_submission": False, "reason": reason},
+            "error": {
+                "status": status,
+                "adapter": adapter,
+                "broker_submission": False,
+                "reason": reason,
+            },
         }
 
     market = (approval.get("shariah_market") or "").upper()
@@ -739,7 +766,9 @@ def order_intent_from_approval(approval: dict) -> dict:
     if asset_class is None or option_contract is None:
         preview = preview_from_approval(approval)
         asset_class = asset_class if asset_class is not None else preview.get("asset_class")
-        option_contract = option_contract if option_contract is not None else preview.get("option_contract")
+        option_contract = (
+            option_contract if option_contract is not None else preview.get("option_contract")
+        )
         option_legs = option_legs if option_legs is not None else preview.get("option_legs")
     return {
         "asset_class": str(asset_class or "equity").strip().lower(),
@@ -790,7 +819,9 @@ def option_leg_from_approval(approval: dict, *, side: str) -> dict:
         }
 
     underlying = str(contract.get("underlying") or approval.get("symbol") or "").strip().upper()
-    occ_symbol = build_option_occ_symbol(underlying, contract.get("expiration"), option_type, contract.get("strike"))
+    occ_symbol = build_option_occ_symbol(
+        underlying, contract.get("expiration"), option_type, contract.get("strike")
+    )
     if occ_symbol is None:
         return {
             "status": "INVALID_OPTION_CONTRACT",
@@ -978,7 +1009,9 @@ def credentials_missing(adapter: str, *, submitted: bool) -> dict:
     }
 
 
-def submission_result(*, approval: dict, plan: dict, account: dict, order: dict, adapter: str) -> dict:
+def submission_result(
+    *, approval: dict, plan: dict, account: dict, order: dict, adapter: str
+) -> dict:
     result = {
         "status": "BROKER_SUBMITTED",
         "adapter": adapter,
@@ -1056,7 +1089,9 @@ def order_not_found(*, adapter: str, broker_order_id: str, code: str, account: d
     }
 
 
-def reconciliation_result(*, approval: dict, order: dict, account: dict, broker_order_id: str, code: str, adapter: str) -> dict:
+def reconciliation_result(
+    *, approval: dict, order: dict, account: dict, broker_order_id: str, code: str, adapter: str
+) -> dict:
     order_status = str(order.get("status") or "UNKNOWN")
     return {
         "status": lifecycle_status(order_status),
@@ -1168,6 +1203,39 @@ def numeric_or_original(value):
 # ---------------------------------------------------------------------------
 # Read-only status probe (mirrors moomoo_status.check_moomoo_status)
 # ---------------------------------------------------------------------------
+
+
+def check_market_clock() -> dict:
+    """Is the market open right now? Read-only; places nothing.
+
+    Exists so a caller can tell that a quote is stale. A limit priced off a
+    closed-market quote is yesterday's number, and for a short-dated option
+    overnight decay can leave a sell-to-open permanently non-marketable -- it
+    rests all session and expires unfilled.
+
+    ``is_open`` is None, never False, when the clock cannot be read. "Unknown"
+    and "closed" are different claims, and guessing "open" would suppress
+    exactly the warning this exists to produce.
+    """
+    credentials = alpaca_credentials()
+    if credentials is None:
+        return {"status": "credentials_missing", "is_open": None}
+
+    response = alpaca_request("GET", "/v2/clock", credentials=credentials)
+    if not response.get("ok"):
+        return {"status": "unreachable", "is_open": None, "reason": error_message(response)}
+
+    data = response.get("data")
+    if not isinstance(data, dict) or "is_open" not in data:
+        return {"status": "unparsed", "is_open": None}
+
+    return {
+        "status": "ok",
+        "is_open": bool(data.get("is_open")),
+        "next_open": data.get("next_open"),
+        "next_close": data.get("next_close"),
+        "timestamp": data.get("timestamp"),
+    }
 
 
 def check_alpaca_status() -> dict:

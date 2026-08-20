@@ -130,8 +130,11 @@ broker for a stated fiqh reason, which is the project's whole thesis in one arte
 - `shariah_gate` (company), `option_structure_gate` (contract), `account_shariah_gate` (Riba)
 - Single entry point: `shariah_candidate.build_shariah_candidate()`
 - `test_option_execution_smoke.py` exercises preview → approval → execute through the real
-  FastAPI app with only the network seam mocked. Writing it found and fixed two real bugs: a
-  side restriction that made both Level 1 strategies unreachable from `/paper/preview`, and a
+  FastAPI app with only the network seam mocked. Writing it found and fixed three real bugs,
+  all the same shape — an equity-only rule applied to options: a
+  side restriction that made both Level 1 strategies unreachable from `/paper/preview`; a
+  required BUY quant signal, which refused a fully-collateralized cash-secured put on a
+  Shariah-PASS underlying for `quant_no_buy_signal` alone (fixed 2026-08-20); and a
   portfolio-overlay unit mismatch that treated contracts/premium as shares/share-price.
 - **What that test does not cover:** it sends `test_fixture: true`, so `paper_test_overrides`
   in `local_api.py` supplies the company verdict as `provider: PAPER_TEST_FIXTURE` and the
@@ -139,6 +142,14 @@ broker for a stated fiqh reason, which is the project's whole thesis in one arte
   gates *are* exercised; the company screen is not. That hook is gated on paper mode, approval
   mode, execution enabled, and a whitelisted symbol, so it cannot fire in normal operation —
   but "end to end" should be read as covering order mechanics, not company screening.
+
+  The same hook also injected a `quant_override` of `signal: "BUY"`, which hid a real bug for
+  as long as the suite existed: `evaluate_candidate` required a BUY quant signal for *every*
+  order, so a fully-collateralized cash-secured put on a Shariah-PASS underlying was refused
+  for `quant_no_buy_signal` alone. Fixed 2026-08-20 by scoping that filter to non-option
+  orders. Scenario 5 now narrows the fixture to the Shariah verdict only and swaps
+  `agent_coordinator.evaluate_quant` for a real `NO_SIGNAL`, so the quant path is no longer
+  masked.
 
 **Integrity fixes**
 

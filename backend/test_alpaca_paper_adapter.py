@@ -46,14 +46,21 @@ class FakeRest:
         self.order_lookup = order_lookup
 
     def __call__(self, method, path, *, credentials, body=None):
-        self.calls.append({"method": method, "path": path, "body": body, "credentials": credentials})
+        self.calls.append(
+            {"method": method, "path": path, "body": body, "credentials": credentials}
+        )
         if path == "/v2/account":
             return {"ok": True, "status_code": 200, "data": self.account}
         if method == "POST" and path == "/v2/orders":
             return {"ok": True, "status_code": 200, "data": self.order}
         if method == "GET" and path.startswith("/v2/orders/"):
             if self.order_lookup is None:
-                return {"ok": False, "status_code": 404, "data": {"message": "order not found"}, "reason": "http_404"}
+                return {
+                    "ok": False,
+                    "status_code": 404,
+                    "data": {"message": "order not found"},
+                    "reason": "http_404",
+                }
             return {"ok": True, "status_code": 200, "data": self.order_lookup}
         raise AssertionError(f"unexpected Alpaca request {method} {path}")
 
@@ -132,7 +139,9 @@ def cash_secured_put_approval(**overrides) -> dict:
 
 
 def submitted_approval(broker_submission: dict, **overrides) -> dict:
-    approval = equity_approval(broker_submission=True, payload=json.dumps({"broker_submission": broker_submission}))
+    approval = equity_approval(
+        broker_submission=True, payload=json.dumps({"broker_submission": broker_submission})
+    )
     approval.update(overrides)
     return approval
 
@@ -162,7 +171,10 @@ def check_live_trading_is_impossible() -> None:
 
 def check_mcp_command_splitting() -> None:
     """Windows paths must survive splitting; shlex POSIX mode eats the backslashes."""
-    assert alpaca_paper_adapter.split_mcp_command("uvx alpaca-mcp-server") == ["uvx", "alpaca-mcp-server"]
+    assert alpaca_paper_adapter.split_mcp_command("uvx alpaca-mcp-server") == [
+        "uvx",
+        "alpaca-mcp-server",
+    ]
 
     windows_path = "E:" + chr(92) + "tools" + chr(92) + "uv" + chr(92) + "uvx.exe"
     assert alpaca_paper_adapter.split_mcp_command(windows_path + " alpaca-mcp-server") == [
@@ -170,7 +182,7 @@ def check_mcp_command_splitting() -> None:
         "alpaca-mcp-server",
     ]
 
-    quoted = 'C:' + chr(92) + 'Program Files' + chr(92) + 'uv' + chr(92) + 'uvx.exe'
+    quoted = "C:" + chr(92) + "Program Files" + chr(92) + "uv" + chr(92) + "uvx.exe"
     assert alpaca_paper_adapter.split_mcp_command('"' + quoted + '" alpaca-mcp-server') == [
         quoted,
         "alpaca-mcp-server",
@@ -192,7 +204,9 @@ def check_mcp_envelope_unwrapping() -> None:
     assert alpaca_paper_adapter.mcp_payload(result) == PAPER_ACCOUNT
     assert alpaca_paper_adapter.unwrap_mcp_envelope(envelope) == PAPER_ACCOUNT
 
-    account = alpaca_paper_adapter.paper_account_from_payload(alpaca_paper_adapter.mcp_payload(result))
+    account = alpaca_paper_adapter.paper_account_from_payload(
+        alpaca_paper_adapter.mcp_payload(result)
+    )
     assert account is not None, "the enveloped account must parse"
     assert account["account_suffix"] == "1740"
     assert account["options_trading_level"] == 1
@@ -208,10 +222,20 @@ def check_mcp_envelope_unwrapping() -> None:
 
     # An error envelope must not be mistaken for an account.
     error_result = {
-        "content": [{"type": "text", "text": "Error calling tool 'get_account_info': HTTP error 401: Unauthorized"}],
+        "content": [
+            {
+                "type": "text",
+                "text": "Error calling tool 'get_account_info': HTTP error 401: Unauthorized",
+            }
+        ],
         "isError": True,
     }
-    assert alpaca_paper_adapter.paper_account_from_payload(alpaca_paper_adapter.mcp_payload(error_result)) is None
+    assert (
+        alpaca_paper_adapter.paper_account_from_payload(
+            alpaca_paper_adapter.mcp_payload(error_result)
+        )
+        is None
+    )
 
 
 def check_symbol_and_status_mapping() -> None:
@@ -220,8 +244,14 @@ def check_symbol_and_status_mapping() -> None:
     assert alpaca_paper_adapter.normalize_order_code(equity_approval(symbol="")) is None
     assert alpaca_paper_adapter.normalize_order_code(equity_approval(symbol="US.AAPL")) == "AAPL"
 
-    assert alpaca_paper_adapter.build_option_occ_symbol("AAPL", "2026-09-18", "CALL", 350.0) == "AAPL260918C00350000"
-    assert alpaca_paper_adapter.build_option_occ_symbol("MSFT", "2026-10-16", "PUT", 402.5) == "MSFT261016P00402500"
+    assert (
+        alpaca_paper_adapter.build_option_occ_symbol("AAPL", "2026-09-18", "CALL", 350.0)
+        == "AAPL260918C00350000"
+    )
+    assert (
+        alpaca_paper_adapter.build_option_occ_symbol("MSFT", "2026-10-16", "PUT", 402.5)
+        == "MSFT261016P00402500"
+    )
     assert alpaca_paper_adapter.build_option_occ_symbol("AAPL", "not-a-date", "CALL", 350.0) is None
     assert alpaca_paper_adapter.build_option_occ_symbol("AAPL", "2026-09-18", "CALL", 0) is None
     assert alpaca_paper_adapter.build_option_occ_symbol("", "2026-09-18", "CALL", 1.0) is None
@@ -284,7 +314,9 @@ def check_equity_submission() -> None:
 
     sell_rest = FakeRest()
     alpaca_paper_adapter.alpaca_request = sell_rest
-    sell = alpaca_paper_adapter.submit_paper_order(equity_approval(id=44, side="SELL", quantity=1, price=200.0), alpaca={})
+    sell = alpaca_paper_adapter.submit_paper_order(
+        equity_approval(id=44, side="SELL", quantity=1, price=200.0), alpaca={}
+    )
     assert sell["status"] == "BROKER_SUBMITTED"
     assert sell["side"] == "SELL"
     assert sell_rest.calls[1]["body"]["side"] == "sell"
@@ -340,7 +372,12 @@ def check_credentials_and_account_guards() -> None:
     assert result["status"] == "ALPACA_PAPER_ACCOUNT_MISSING", result
 
     def failing(method, path, *, credentials, body=None):
-        return {"ok": False, "status_code": 401, "data": {"message": "unauthorized"}, "reason": "http_401"}
+        return {
+            "ok": False,
+            "status_code": 401,
+            "data": {"message": "unauthorized"},
+            "reason": "http_401",
+        }
 
     alpaca_paper_adapter.alpaca_request = failing
     result = alpaca_paper_adapter.submit_paper_order(equity_approval(), alpaca={})
@@ -386,7 +423,9 @@ def check_option_submission() -> None:
     }
     assert "extended_hours" not in body, "options orders must not request extended hours"
 
-    put_rest = FakeRest(order={**call_order, "id": "ALPACA-OPT-2", "symbol": "MSFT261016P00402500", "qty": "2"})
+    put_rest = FakeRest(
+        order={**call_order, "id": "ALPACA-OPT-2", "symbol": "MSFT261016P00402500", "qty": "2"}
+    )
     alpaca_paper_adapter.alpaca_request = put_rest
     put = alpaca_paper_adapter.submit_paper_order(cash_secured_put_approval(), alpaca={})
     assert put["status"] == "BROKER_SUBMITTED", put
@@ -397,7 +436,9 @@ def check_option_submission() -> None:
 
     close_rest = FakeRest(order={**call_order, "id": "ALPACA-OPT-3", "side": "buy"})
     alpaca_paper_adapter.alpaca_request = close_rest
-    close = alpaca_paper_adapter.submit_paper_order(covered_call_approval(id=53, side="BUY"), alpaca={})
+    close = alpaca_paper_adapter.submit_paper_order(
+        covered_call_approval(id=53, side="BUY"), alpaca={}
+    )
     assert close["status"] == "BROKER_SUBMITTED", close
     assert close["position_intent"] == "buy_to_close"
     assert close_rest.calls[1]["body"]["side"] == "buy"
@@ -410,13 +451,19 @@ def check_option_rejections() -> None:
         (covered_call_approval(option_contract=None), "INVALID_OPTION_CONTRACT"),
         (
             covered_call_approval(
-                option_contract={**covered_call_approval()["option_contract"], "strategy": "STRADDLE"}
+                option_contract={
+                    **covered_call_approval()["option_contract"],
+                    "strategy": "STRADDLE",
+                }
             ),
             "UNSUPPORTED_OPTION_STRATEGY",
         ),
         (
             covered_call_approval(
-                option_contract={**covered_call_approval()["option_contract"], "strategy": "NAKED_CALL"}
+                option_contract={
+                    **covered_call_approval()["option_contract"],
+                    "strategy": "NAKED_CALL",
+                }
             ),
             "UNSUPPORTED_OPTION_STRATEGY",
         ),
@@ -428,18 +475,26 @@ def check_option_rejections() -> None:
         ),
         (
             cash_secured_put_approval(
-                option_contract={**cash_secured_put_approval()["option_contract"], "option_type": "CALL"}
+                option_contract={
+                    **cash_secured_put_approval()["option_contract"],
+                    "option_type": "CALL",
+                }
             ),
             "OPTION_STRUCTURE_MISMATCH",
         ),
         (
             covered_call_approval(
-                option_contract={**covered_call_approval()["option_contract"], "expiration": "18/09/2026"}
+                option_contract={
+                    **covered_call_approval()["option_contract"],
+                    "expiration": "18/09/2026",
+                }
             ),
             "INVALID_OPTION_CONTRACT",
         ),
         (
-            covered_call_approval(option_contract={**covered_call_approval()["option_contract"], "strike": -1}),
+            covered_call_approval(
+                option_contract={**covered_call_approval()["option_contract"], "strike": -1}
+            ),
             "INVALID_OPTION_CONTRACT",
         ),
     ]
@@ -449,7 +504,9 @@ def check_option_rejections() -> None:
         assert result["broker_submission"] is False
 
     # A multi-leg payload is Level 3 and stays out of scope.
-    spread = covered_call_approval(id=54, option_legs=[{"symbol": "AAPL260918C00350000"}, {"symbol": "AAPL260918C00360000"}])
+    spread = covered_call_approval(
+        id=54, option_legs=[{"symbol": "AAPL260918C00350000"}, {"symbol": "AAPL260918C00360000"}]
+    )
     result = alpaca_paper_adapter.submit_paper_order(spread, alpaca={})
     assert result["status"] == "UNSUPPORTED_OPTION_STRATEGY", result
     assert "multi_leg" in result["reason"]
@@ -513,7 +570,9 @@ def check_reconciliation() -> None:
     )
     assert partial["status"] == "BROKER_FILLED"
 
-    alpaca_paper_adapter.alpaca_request = FakeRest(order_lookup={**filled, "status": "partially_filled", "filled_qty": "1"})
+    alpaca_paper_adapter.alpaca_request = FakeRest(
+        order_lookup={**filled, "status": "partially_filled", "filled_qty": "1"}
+    )
     result = alpaca_paper_adapter.reconcile_paper_order(submitted_approval(stored))
     assert result["status"] == "BROKER_PARTIAL_FILL"
     assert result["dealt_qty"] == 1.0
@@ -527,10 +586,14 @@ def check_reconciliation() -> None:
     assert result["status"] == "BROKER_NOT_SUBMITTED"
     assert result["broker_submission"] is False
 
-    result = alpaca_paper_adapter.reconcile_paper_order(submitted_approval({"adapter": "alpaca", "broker_code": "AAPL"}))
+    result = alpaca_paper_adapter.reconcile_paper_order(
+        submitted_approval({"adapter": "alpaca", "broker_code": "AAPL"})
+    )
     assert result["status"] == "BROKER_ORDER_ID_MISSING", result
 
-    result = alpaca_paper_adapter.reconcile_paper_order(submitted_approval({"adapter": "sirius", "broker_order_id": "X"}))
+    result = alpaca_paper_adapter.reconcile_paper_order(
+        submitted_approval({"adapter": "sirius", "broker_order_id": "X"})
+    )
     assert result["status"] == "ADAPTER_NOT_CONFIGURED", result
 
 
@@ -538,7 +601,8 @@ def check_fake_adapter() -> None:
     os.environ["PAPER_EXECUTION_ADAPTER"] = "fake"
     try:
         result = alpaca_paper_adapter.submit_paper_order(
-            equity_approval(), alpaca={"environment": "PAPER", "account_type": "MARGIN", "account_suffix": "1740"}
+            equity_approval(),
+            alpaca={"environment": "PAPER", "account_type": "MARGIN", "account_suffix": "1740"},
         )
         assert result["status"] == "BROKER_SUBMITTED"
         assert result["adapter"] == "fake"
@@ -546,7 +610,9 @@ def check_fake_adapter() -> None:
         assert result["environment"] == "PAPER"
         assert result["account_suffix"] == "1740"
 
-        reconciliation = alpaca_paper_adapter.reconcile_paper_order(submitted_approval({**result, "adapter": "fake"}))
+        reconciliation = alpaca_paper_adapter.reconcile_paper_order(
+            submitted_approval({**result, "adapter": "fake"})
+        )
         assert reconciliation["status"] == "BROKER_SUBMITTED"
         assert reconciliation["adapter"] == "fake"
         assert reconciliation["broker_order_id"] == "FAKE-PAPER-42"
@@ -568,7 +634,12 @@ def check_mcp_adapter() -> None:
         client = FakeMcpClient(
             {
                 "get_account_info": PAPER_ACCOUNT,
-                "place_stock_order": {"id": "MCP-ORDER-1", "symbol": "AAPL", "status": "accepted", "side": "buy"},
+                "place_stock_order": {
+                    "id": "MCP-ORDER-1",
+                    "symbol": "AAPL",
+                    "status": "accepted",
+                    "side": "buy",
+                },
             }
         )
         alpaca_paper_adapter.load_alpaca_mcp_client = lambda: client
@@ -597,7 +668,11 @@ def check_mcp_adapter() -> None:
         option_client = FakeMcpClient(
             {
                 "get_account_info": PAPER_ACCOUNT,
-                "place_option_order": {"id": "MCP-OPT-1", "symbol": "AAPL260918C00350000", "status": "accepted"},
+                "place_option_order": {
+                    "id": "MCP-OPT-1",
+                    "symbol": "AAPL260918C00350000",
+                    "status": "accepted",
+                },
             }
         )
         alpaca_paper_adapter.load_alpaca_mcp_client = lambda: option_client
@@ -633,7 +708,9 @@ def check_mcp_adapter() -> None:
         )
         alpaca_paper_adapter.load_alpaca_mcp_client = lambda: reconcile_client
         reconciliation = alpaca_paper_adapter.reconcile_paper_order(
-            submitted_approval({"adapter": "alpaca_mcp", "broker_order_id": "MCP-ORDER-1", "broker_code": "AAPL"})
+            submitted_approval(
+                {"adapter": "alpaca_mcp", "broker_order_id": "MCP-ORDER-1", "broker_code": "AAPL"}
+            )
         )
         assert reconciliation["status"] == "BROKER_FILLED", reconciliation
         assert reconciliation["adapter"] == "alpaca_mcp"
@@ -669,7 +746,9 @@ def check_status_probe() -> None:
     assert status["base_url"] == alpaca_paper_adapter.ALPACA_PAPER_BASE_URL
     assert status["broker_submission"] is False
 
-    alpaca_paper_adapter.alpaca_request = FakeRest(account={**PAPER_ACCOUNT, "account_blocked": True})
+    alpaca_paper_adapter.alpaca_request = FakeRest(
+        account={**PAPER_ACCOUNT, "account_blocked": True}
+    )
     status = alpaca_paper_adapter.check_alpaca_status()
     assert status["paper_account_ready"] is False
     assert status["status"] == "paper_account_blocked", status
@@ -683,10 +762,70 @@ def check_status_probe() -> None:
         os.environ["ALPACA_SECRET_KEY"] = "TEST-SECRET"
 
 
+def check_market_clock() -> None:
+    """The clock must fail to UNKNOWN, never to 'open'.
+
+    A limit priced off a quote captured while the market is shut is stale by
+    definition. On 2026-08-20 that put a real sell-to-open order on the book at
+    0.13 -- yesterday's bid -- four hours before the open, where overnight decay
+    on a 1-DTE contract can leave it permanently non-marketable. Callers can only
+    warn about that if they can tell the market was closed, and a clock query
+    that fails must not be read as "open".
+    """
+
+    class ClockRest(FakeRest):
+        def __init__(self, payload=None, ok=True):
+            super().__init__()
+            self.payload = payload
+            self.ok = ok
+
+        def __call__(self, method, path, *, credentials, body=None):
+            self.calls.append({"method": method, "path": path, "body": body})
+            if path == "/v2/clock":
+                if not self.ok:
+                    return {"ok": False, "status_code": 500, "data": {}, "reason": "http_500"}
+                return {"ok": True, "status_code": 200, "data": self.payload}
+            return super().__call__(method, path, credentials=credentials, body=body)
+
+    closed = ClockRest(
+        {
+            "is_open": False,
+            "next_open": "2026-08-20T09:30:00-04:00",
+            "next_close": "2026-08-20T16:00:00-04:00",
+            "timestamp": "2026-08-20T05:18:36-04:00",
+        }
+    )
+    alpaca_paper_adapter.alpaca_request = closed
+    result = alpaca_paper_adapter.check_market_clock()
+    assert result["status"] == "ok", result
+    assert result["is_open"] is False, result
+    assert result["next_open"] == "2026-08-20T09:30:00-04:00", result
+    # Assert the request that was built, not just the answer that came back.
+    assert closed.calls[0]["method"] == "GET", closed.calls
+    assert closed.calls[0]["path"] == "/v2/clock", closed.calls
+
+    alpaca_paper_adapter.alpaca_request = ClockRest({"is_open": True})
+    assert alpaca_paper_adapter.check_market_clock()["is_open"] is True
+
+    # Unreachable, and a payload with no is_open at all, both mean "unknown".
+    alpaca_paper_adapter.alpaca_request = ClockRest(None, ok=False)
+    unreachable = alpaca_paper_adapter.check_market_clock()
+    assert unreachable["status"] == "unreachable", unreachable
+    assert unreachable["is_open"] is None, unreachable
+
+    alpaca_paper_adapter.alpaca_request = ClockRest({})
+    assert alpaca_paper_adapter.check_market_clock()["is_open"] is None
+
+
 def main() -> None:
     saved_env = {
         key: os.environ.get(key)
-        for key in ["PAPER_EXECUTION_ADAPTER", "ALPACA_API_KEY_ID", "ALPACA_SECRET_KEY", "ALPACA_MODE"]
+        for key in [
+            "PAPER_EXECUTION_ADAPTER",
+            "ALPACA_API_KEY_ID",
+            "ALPACA_SECRET_KEY",
+            "ALPACA_MODE",
+        ]
     }
     original_request = alpaca_paper_adapter.alpaca_request
     original_mcp_loader = alpaca_paper_adapter.load_alpaca_mcp_client
@@ -709,6 +848,7 @@ def main() -> None:
         check_fake_adapter()
         check_mcp_adapter()
         check_status_probe()
+        check_market_clock()
     finally:
         alpaca_paper_adapter.alpaca_request = original_request
         alpaca_paper_adapter.load_alpaca_mcp_client = original_mcp_loader
@@ -718,7 +858,9 @@ def main() -> None:
             else:
                 os.environ[key] = value
 
-    print("PASS: Alpaca paper adapter maps equity and Level 1 option orders to paper-only endpoints.")
+    print(
+        "PASS: Alpaca paper adapter maps equity and Level 1 option orders to paper-only endpoints."
+    )
 
 
 if __name__ == "__main__":

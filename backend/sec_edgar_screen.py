@@ -47,6 +47,8 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from sec_edgar_cache import cached_fetch
+
 
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
@@ -150,7 +152,18 @@ class SecEdgarError(RuntimeError):
 
 
 def sec_request(url: str) -> dict:
-    """Single seam for every SEC call, so tests never touch the network."""
+    """Single seam for every SEC call, so tests never touch the network.
+
+    Repeat calls for the same URL are served from a temporary on-disk cache
+    (``sec_edgar_cache``, a shim -- see that module's docstring), which also
+    keeps live fetches under SEC's ~10 requests/second guidance. Tests that swap
+    this whole function out, as every existing suite does, bypass both.
+    """
+    return cached_fetch(url, lambda: _sec_fetch(url))
+
+
+def _sec_fetch(url: str) -> dict:
+    """The actual HTTP call, separated so the cache can decide whether to make it."""
     headers = {
         "User-Agent": os.getenv("SEC_EDGAR_USER_AGENT") or DEFAULT_USER_AGENT,
         "Accept": "application/json",
@@ -195,7 +208,11 @@ def check_us_symbol(symbol: str) -> dict:
     except SecEdgarError as exc:
         return {"status": "ERROR", "symbol": normalized, "reason": str(exc)}
     if cik is None:
-        return {"status": "UNKNOWN", "symbol": normalized, "reason": "ticker_not_found_in_sec_registry"}
+        return {
+            "status": "UNKNOWN",
+            "symbol": normalized,
+            "reason": "ticker_not_found_in_sec_registry",
+        }
 
     try:
         profile = fetch_company_profile(cik)
@@ -252,7 +269,9 @@ def check_us_symbol(symbol: str) -> dict:
         "report_date": ratios["report_date"],
         "screen": "financial_ratios",
         "ratios": ratios,
-        "reason": "; ".join(failures) if failures else (
+        "reason": "; ".join(failures)
+        if failures
+        else (
             f"debt {ratios['debt_ratio_pct']:.1f}% and cash {ratios['cash_ratio_pct']:.1f}% "
             f"of total assets, both under {MAX_RATIO_PCT:.0f}%"
         ),

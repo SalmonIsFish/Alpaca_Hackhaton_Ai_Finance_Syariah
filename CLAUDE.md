@@ -160,11 +160,13 @@ individually:
 .\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
 .\.venv\Scripts\python.exe backend\test_portfolio_risk_limits.py
 .\.venv\Scripts\python.exe backend\test_portfolio_snapshot_history.py
+.\.venv\Scripts\python.exe backend\test_provision_cash_account.py
 .\.venv\Scripts\python.exe backend\test_portfolio_store.py
 .\.venv\Scripts\python.exe backend\test_positions_api.py
 .\.venv\Scripts\python.exe backend\test_quant_agent_provider.py
 .\.venv\Scripts\python.exe backend\test_repo_defaults.py
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
+.\.venv\Scripts\python.exe backend\test_sec_edgar_cache.py
 .\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_shariah_explain.py
@@ -176,7 +178,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_watchlist_store.py
 ```
 
-All 38 of those pass. There are 39 `test_*.py` files on disk; `test_moomoo.py` is the one
+All 40 of those pass. There are 41 `test_*.py` files on disk; `test_moomoo.py` is the one
 excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before
 touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —
@@ -208,10 +210,16 @@ suite not run as part of the regular list above.
    SIC code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
    are overstated. Both approximations err toward rejection.
 
-   **Cost:** a screen is a live SEC fetch of up to ~4.7 MB and takes roughly 0.7–2 s, with no
-   cache and no rate throttle. `/paper/preview` and `/stock/{symbol}/profile` now carry that
-   on every call. The screening store in NEXT_STEPS.md is what fixes it. Tests are unaffected
-   — they supply a `shariah_override` or swap the `sec_request` seam, and none reach SEC.
+   **Cost:** a cold screen is a live SEC fetch of up to ~4.7 MB taking roughly 0.7–2 s, and
+   `/paper/preview`, `/stock/{symbol}/profile` and `/stock/{symbol}/explain` all sit on it.
+   `sec_edgar_cache.py` — a **temporary shim, not the screening store** — now serves a repeat
+   fetch of the same URL from `backend/sec_edgar_cache/` for 24 h and holds live fetches to
+   ~8 req/s, under SEC's 10 req/s guidance. Measured: three symbols cold 4.53 s, warm 0.66 s
+   with no SEC request at all. It caches raw responses only, never verdicts, and never caches
+   a failure — a 404 is a fact about SEC, not about the company, and the screen fails closed
+   on ERROR. The append-only `shariah_screens` store in NEXT_STEPS.md still replaces it; delete
+   the shim then. Tests are unaffected — they supply a `shariah_override` or swap the
+   `sec_request` seam, and none reach SEC or the cache.
 2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
    shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
    diverts option fills to `paper_fills` under the OCC symbol and returns
@@ -268,14 +276,34 @@ suite not run as part of the regular list above.
    `test_option_execution_smoke.py` still covers the paths a single live trade cannot: a
    covered call, an unsupported strategy, a margin account, and an under-collateralized
    cash-secured put, through the real FastAPI app with only the `alpaca_request` seam mocked.
-   Writing it found and fixed two real bugs — `agent_coordinator.evaluate_candidate`
+   Writing it found and fixed **three** real bugs, all the same shape: an equity-only rule
+   applied to options. `agent_coordinator.evaluate_candidate`
    unconditionally blocked any non-BUY side, which made both Level 1 strategies (both
    sell-to-open) unreachable from `/paper/preview` at all (fixed with an `asset_class` param);
    and the portfolio risk overlay treated an option's contracts/premium as equity
    shares/share-price, producing nonsensical exposure percentages that would reject almost any
    option order once a real position existed (fixed by skipping that equity-specific overlay
    for `asset_class == "option"` — `option_structure_gate` and `account_shariah_gate` already
-   provide correct option-native sizing).
+   provide correct option-native sizing); and the same function required a **BUY quant signal**
+   for every order, so a fully-collateralized cash-secured put on a Shariah-PASS underlying was
+   refused for `quant_no_buy_signal` alone (fixed on 2026-08-20 by scoping that filter to
+   non-option orders — see below).
+
+   The quant agent decides whether to open a *directional long*. No Level 1 structure is one: a
+   covered call is written against stock already owned, a cash-secured put means "willing to own
+   at this price", and buying a short leg back reduces risk. Requiring a breakout for any of them
+   blocked the strategy whenever the underlying was merely calm — on 2026-08-20 that was 19 of 21
+   liquid large caps scanned. No protection was removed: ownership and collateral are still proven
+   by `option_structure_gate` and `account_shariah_gate` at approval time, and the signal is still
+   reported in `agent_summary.quant`, just not as a blocker. Directional equity entries are
+   unaffected and still require BUY.
+
+   **The fixture masked it, which is why it survived so long.** Scenarios 1–4 send
+   `test_fixture: true`, and `paper_test_overrides` injects a `quant_override` of `signal: "BUY"`
+   as well as the Shariah verdict — so none of them could see what the quant agent actually says.
+   Scenario 5 narrows the fixture to the Shariah verdict only and swaps
+   `agent_coordinator.evaluate_quant` for a real `NO_SIGNAL` shape, asserting both that the option
+   is approved and that a plain equity BUY on the same underlying is still blocked.
 
 ## Style
 
