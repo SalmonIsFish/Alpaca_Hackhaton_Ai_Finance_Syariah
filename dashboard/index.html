@@ -1339,14 +1339,18 @@
     // needs no manual API-base entry. Local dev (opened as a file:// path, or
     // served separately on localhost/127.0.0.1) keeps the explicit default.
     (function setHostedApiBaseDefault() {
+      // Runs synchronously, not on DOMContentLoaded: #apiBase (line ~963) is already
+      // parsed by the time this script tag near the end of <body> executes, and
+      // refreshStatus() below calls apiBase() synchronously on its very first status
+      // check. Deferring this to DOMContentLoaded raced that first check -- it read
+      // the input's hardcoded 127.0.0.1:8000 default and failed every hosted page
+      // load, showing "Disconnected" until a manual Refresh click.
       const host = window.location.hostname;
       if (host && host !== "localhost" && host !== "127.0.0.1") {
-        document.addEventListener("DOMContentLoaded", () => {
-          const input = document.querySelector("#apiBase");
-          if (input) {
-            input.value = window.location.origin;
-          }
-        });
+        const input = document.querySelector("#apiBase");
+        if (input) {
+          input.value = window.location.origin;
+        }
       }
     })();
 
