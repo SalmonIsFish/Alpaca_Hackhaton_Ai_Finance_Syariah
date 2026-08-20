@@ -15,11 +15,12 @@
 | 0:30–1:15 | The Problem | Split screen: Gate chain diagram + problem statement | ~45 seconds: Explain the Shariah-options conflict and why this matters |
 | 1:15–2:30 | The Solution: Gate Chain | Animated or static flowchart of 4-gate architecture | ~75 seconds: Walk through the gate chain (Shariah → Structure → Account → Risk) |
 | 2:30–3:30 | Real Evidence: Rejection | Dashboard showing CVX order attempt + rejection trace | ~60 seconds: Live demo of a real gate REJECTING an order (margin account block) |
-| 3:30–4:15 | Real Evidence: Approval Path | Dashboard showing successful order preview → approval flow | ~45 seconds: Show the approval path for a Shariah-compliant order (if available) |
+| 3:30–4:00 | Real Evidence: Equity Approval | Dashboard showing successful CVX order preview → approval → fill | ~30 seconds: Show the approval path for the equity trade |
+| 4:00–4:15 | Real Evidence: Option Approval | Dashboard showing AAPL put order preview → approval → fill | ~15 seconds: Show the same gates working on a minority-position option structure |
 | 4:15–4:50 | Shariah Trace Panel | Expanded view of `/explain` endpoint for CVX, showing fiqh basis | ~35 seconds: Narrate the citation-backed reasoning (debt ratio, Riba principle) |
-| 4:50–5:00 | Honesty & Limitations | Text overlay: "Minority Position," "Requires Scholar Review" | ~10 seconds: Close with transparency statement |
+| 4:50–5:10 | Honesty & Limitations | Text overlay: "Minority Position," "Requires Scholar Review," "Technical Proof, Not Fiqh Approval" | ~20 seconds: Close with transparency statement on both trades |
 
-**Total: ~5 minutes** (can trim to 3–4 min if needed by cutting Approval Path segment)
+**Total: ~5 minutes** (can trim by condensing equity + option path segments into one 40-second combined segment if needed)
 
 ---
 
@@ -111,7 +112,33 @@
 
 **[VERIFIED FACT: All details are from reconciled-CVX.json and confirmed via NEXT_STEPS.md. This is the first real Shariah-compliant trade executed end-to-end through the system.]**
 
-**[EDITORIAL NOTE: Queue 6, a cash-secured put on CVX (minority-position option structure), was submitted post-market-open Aug 20. Status: check live-trade-evidence/ for queue-6 evidence. If filled, it is a stronger differentiator (options are the hackathon's mandatory requirement) and should move into this segment or become a separate segment. If not filled, leave this note and keep the CVX equity trade as proof-of-concept.]**
+**[UPDATED: Queue 11, a cash-secured put on AAPL (AAPL260828P00305000, strike $305, expiry Aug 28) was submitted on August 20, 2026. Sold to open at $1.02 premium against a $1.00 limit (filled at market). This is the proof-of-concept for the minority-position option structure. It went through all four gates (Shariah → Structure → Account → Risk) without override. Both gate-passing equity and gate-passing option trades have now executed live. Include this as proof that the gate chain works for both asset classes.]**
+
+---
+
+### Segment 5B: Option Order Through the Gate Chain [4:00–4:15]
+
+**[SHOW: Dashboard with AAPL cash-secured put order preview → approval → fill confirmation]**
+
+*"But options are the real test. Here's a second real trade: a cash-secured put on AAPL (queue 11), August 20, 2026. The contract is AAPL260828P00305000 — strike $305, expiry August 28, 6 days out. We sold to open for a $1.02 premium.*
+
+*Let's trace this through the gates:*
+
+*Gate 1 (Shariah Underlying): AAPL passes SEC EDGAR screening — debt and cash ratios well under limits. ✓ PASS.*
+
+*Gate 2 (Option Structure): This is a cash-secured put. Is it defensible under our framework? Full cash backing ($30,500 posted), time-bounded (6 days), and tied to conditional ownership if exercised. This is defensible as a Urbun-like structure — earnest money with cash backing, recognized in Islamic contract law. ✓ PASS.*
+
+*Gate 3 (Account Shariah): CASH account, no margin, no Riba exposure. ✓ PASS.*
+
+*Gate 4 (Risk Limits): Position exposure under all configured caps. ✓ PASS.*
+
+*All four gates clear. Order submitted. Filled at $1.02 premium. Reconciled into the ledger.*
+
+*This is the key differentiator: the hackathon rules mandate options. We didn't dodge them or claim they're universally haram. We built a gate that screens option structures, allowing only the defensible ones. Both equity and options now have real fills through the same gate chain, with no override."*
+
+**[VERIFIED FACT: Queue 11 AAPL put data from live-trade-evidence/filled-AAPL-option.json. Cash backing ($30,500 for 100 shares at $305 strike) is a hard requirement in the option_structure_gate code. This is not hypothetical; it's enforced.]**
+
+**[TONE NOTE: This segment transitions from "the gate chain works for equity" to "the gate chain also works for the minority-position option structures." The emphasis is still on technical proof, not fiqh approval.]**
 
 ---
 
