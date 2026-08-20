@@ -160,6 +160,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
 .\.venv\Scripts\python.exe backend\test_portfolio_risk_limits.py
 .\.venv\Scripts\python.exe backend\test_portfolio_snapshot_history.py
+.\.venv\Scripts\python.exe backend\test_provision_cash_account.py
 .\.venv\Scripts\python.exe backend\test_portfolio_store.py
 .\.venv\Scripts\python.exe backend\test_positions_api.py
 .\.venv\Scripts\python.exe backend\test_quant_agent_provider.py
@@ -177,7 +178,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_watchlist_store.py
 ```
 
-All 39 of those pass. There are 40 `test_*.py` files on disk; `test_moomoo.py` is the one
+All 40 of those pass. There are 41 `test_*.py` files on disk; `test_moomoo.py` is the one
 excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before
 touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —

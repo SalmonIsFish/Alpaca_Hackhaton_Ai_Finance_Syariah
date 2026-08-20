@@ -45,13 +45,22 @@ def tighten(config: dict, *, disable_shorting: bool) -> dict:
     """Build the patch, refusing anything that would loosen the account."""
     patch = {}
 
+    # An unreadable multiplier means the account's real margin capability is
+    # unknown. Omitting it from the patch would leave a 4x account at 4x while
+    # the run still reported success, and account_shariah_gate would then reject
+    # every order for a reason nobody is looking at. Fail closed instead.
+    raw = config.get("max_margin_multiplier")
     try:
-        existing = float(config.get("max_margin_multiplier") or 0)
+        existing = float(raw)
     except (TypeError, ValueError):
-        existing = 0.0
+        raise SystemExit(
+            f"cannot read max_margin_multiplier (got {raw!r}); refusing to patch an account "
+            "whose margin capability is unknown"
+        ) from None
+
     if existing > float(TARGET_MULTIPLIER):
         patch["max_margin_multiplier"] = TARGET_MULTIPLIER
-    elif existing and existing < float(TARGET_MULTIPLIER):
+    elif existing < float(TARGET_MULTIPLIER):
         raise SystemExit(
             f"refusing to raise max_margin_multiplier from {existing} to {TARGET_MULTIPLIER}"
         )
@@ -76,10 +85,14 @@ def main() -> None:
 
     print(f"base url:  {ALPACA_PAPER_BASE_URL}")
     before_status = check_alpaca_status()
-    print(f"account:   {before_status.get('account_suffix')}  type={before_status.get('account_type')}")
+    print(
+        f"account:   {before_status.get('account_suffix')}  type={before_status.get('account_type')}"
+    )
 
     config = current_configuration(credentials)
-    print(f"before:    max_margin_multiplier={config.get('max_margin_multiplier')} no_shorting={config.get('no_shorting')}")
+    print(
+        f"before:    max_margin_multiplier={config.get('max_margin_multiplier')} no_shorting={config.get('no_shorting')}"
+    )
 
     patch = tighten(config, disable_shorting=disable_shorting)
     if not patch:
@@ -91,17 +104,27 @@ def main() -> None:
         print("\ndry run. re-run with --apply to write this to the broker account.")
         return
 
-    response = alpaca_request("PATCH", "/v2/account/configurations", credentials=credentials, body=patch)
+    response = alpaca_request(
+        "PATCH", "/v2/account/configurations", credentials=credentials, body=patch
+    )
     if not response.get("ok"):
-        raise SystemExit(f"patch failed ({response.get('status_code')}): {json.dumps(response.get('data'))}")
+        raise SystemExit(
+            f"patch failed ({response.get('status_code')}): {json.dumps(response.get('data'))}"
+        )
 
     after = response.get("data") or {}
-    print(f"after:     max_margin_multiplier={after.get('max_margin_multiplier')} no_shorting={after.get('no_shorting')}")
+    print(
+        f"after:     max_margin_multiplier={after.get('max_margin_multiplier')} no_shorting={after.get('no_shorting')}"
+    )
 
     after_status = check_alpaca_status()
-    print(f"account:   {after_status.get('account_suffix')}  type={after_status.get('account_type')}")
+    print(
+        f"account:   {after_status.get('account_suffix')}  type={after_status.get('account_type')}"
+    )
     if after_status.get("account_type") != "CASH":
-        print("\nWARNING: account still does not report CASH; account_shariah_gate will keep rejecting.")
+        print(
+            "\nWARNING: account still does not report CASH; account_shariah_gate will keep rejecting."
+        )
 
 
 if __name__ == "__main__":
