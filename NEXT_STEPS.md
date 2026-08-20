@@ -9,8 +9,9 @@ works, what doesn't, and what to do next.
 
 Amanah Trader is a local-first Shariah-compliant paper-trading control system on **Alpaca**.
 The broker adapter, market data, gate chain, approval flow, real Shariah screening, and option
-strike selection are all built and tested. **One trade has run end to end against the real
-broker** — see the evidence trail below.
+strike selection are all built and tested. **Two trades have run end to end against the real
+broker — one equity, one option** (a cash-secured put, filled 2026-08-20) — see the evidence
+trail below.
 
 Current mode:
 
@@ -136,6 +137,12 @@ broker for a stated fiqh reason, which is the project's whole thesis in one arte
   required BUY quant signal, which refused a fully-collateralized cash-secured put on a
   Shariah-PASS underlying for `quant_no_buy_signal` alone (fixed 2026-08-20); and a
   portfolio-overlay unit mismatch that treated contracts/premium as shares/share-price.
+- A **fourth** of that same shape was found on 2026-08-20 by a live order rather than by a test:
+  `paper_execution.validate_sell_reduction` demanded a local equity position for any `SELL`, so
+  a cash-secured put on an underlying with no shares held was rejected at execution after
+  clearing every gate. It had passed until then only because the first live option order sat on
+  top of the leftover 1-share CVX position. Its regression test sits **before** `seed_position()`
+  so it cannot pass by that coincidence.
 - **What that test does not cover:** it sends `test_fixture: true`, so `paper_test_overrides`
   in `local_api.py` supplies the company verdict as `provider: PAPER_TEST_FIXTURE` and the
   Shariah screen is never invoked (verified: zero calls). The option-structure and account
@@ -155,7 +162,8 @@ broker for a stated fiqh reason, which is the project's whole thesis in one arte
 
 - Option fills no longer corrupt the equity ledger (they previously booked contracts as shares
   of the underlying at 1/100th the true exposure)
-- Reduce-only SELL guards at execution time and at portfolio sync time
+- Reduce-only SELL guards at execution time and at portfolio sync time (equity only —
+  sell-to-open options are exempt, since their collateral is proven at approval)
 - Approval-payload audit rejects malformed or stale payloads before any broker call
 
 **Repo hygiene**
@@ -186,11 +194,19 @@ is what the screening store below is for.
 `portfolio_store` models whole shares only. Option fills are audited under their OCC symbol but
 create no position. Alpaca is the source of truth. Deliberate scope decision, not a defect.
 
-**4. No *option* order has run end to end live.**
-The proven live trade was plain equity. Both Level 1 structures are exercised only by
-`test_option_execution_smoke.py` against a mocked `alpaca_request` seam. Since options are the
-hackathon's stated differentiator, one real covered call or cash-secured put through the full
-chain is worth more than any further equity trade.
+**4. The covered call has never run live — the cash-secured put now has.**
+On 2026-08-20 a real cash-secured put filled end to end: 1 contract of `AAPL260828P00305000`
+sold to open at 1.02 against a 1.00 limit, queue 11, order
+`3f06c708-d8fa-4d3a-8823-e3a78f9b3053` (`docs/live-trade-evidence/filled-AAPL-option.json`).
+So option symbology, the MCP submission path, the confirmation gate and the fill/reconcile
+path are all now proven on real infrastructure rather than a mocked seam.
+
+The **covered call** is still unproven live, and the test account cannot currently prove it:
+`option_strategy` sizes a covered call from owned shares at the standard 100-share multiplier,
+and `0TCX` holds 1 share of CVX. It needs 100 shares of a Shariah-PASS underlying — roughly
+$20,700 at CVX's price, against ~$99,895 settled cash, so it is affordable but requires
+deliberately opening an equity position first. Worth doing only if it is wanted for its own
+sake; do not manufacture the position purely to tick this off.
 
 **5. The proven trade lives in a database no deployment can see.**
 `backend/*.db` is gitignored by design, so the CVX position sits only in the
@@ -370,9 +386,11 @@ against the strategy endpoint, 2 against the single-screening-path check, all ca
    `check_alpaca_status` reports `CASH` (apply `provision_cash_account.py` if it does not), then
    drive preview → approval → `EXECUTE PAPER` → reconcile against the deployment so its own
    database captures the position.
-3. **Get one Level 1 option order through the live chain** — a covered call needs 100 shares of
-   a Shariah-PASS underlying, a cash-secured put needs settled collateral. Options are the
-   stated differentiator and are the least-proven part of the system.
+3. **Optionally, get a live *covered call* through the chain.** The cash-secured put half of
+   Level 1 is now proven live (see broken/missing #4); the covered call is not, and needs 100
+   shares of a Shariah-PASS underlying first. Lower priority than it was — the differentiator
+   is demonstrably real now — and not worth opening an equity position for unless that position
+   is wanted anyway.
 4. **Get the margin-account policy in front of a scholar**, or state plainly in the submission
    that it is unreviewed. It is the most contestable compliance claim in the project.
 5. **Upgrade the fiqh citations from secondary to primary sources.** `shariah_explain.py`
@@ -382,7 +400,8 @@ against the strategy endpoint, 2 against the single-screening-path check, all ca
    pre-purchase research view, both of which are views over the store from step 1.
 
 Completed since the last revision, no longer listed above: the margin-account blocker, the
-first end-to-end live trade, `GET /stock/{symbol}/explain`, `GET /stock/{symbol}/option-strategy`,
+first end-to-end live trade, the first live *option* fill (cash-secured put, 2026-08-20),
+`GET /stock/{symbol}/explain`, `GET /stock/{symbol}/option-strategy`,
 the duplicate Zoya screening path, demo hosting on Replit, and the stale Moomoo-era position
 (cleared; backup at `backend/paper_trading.db.bak-stale-aapl-cleanup`).
 
