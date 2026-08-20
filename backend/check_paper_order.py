@@ -98,6 +98,15 @@ if args.option is not None:
     finally:
         connection.close()
 
+    # A failed account query arrives here as cash_collateral 0.0, which the
+    # strategy layer would report as "no settled cash available to secure a put"
+    # -- a false statement about the account caused by a network blip. Stop on
+    # the real reason instead; it is retryable, and a collateral verdict is not.
+    if account.get("broker_status") != "paper_account_ready":
+        print(f"\nbroker did not answer the account query: {account.get('broker_status')}")
+        print("this is a connectivity failure, not a collateral problem -- retry the command.")
+        raise SystemExit(1)
+
     proposal = propose_option_strategy(symbol, account=account, strategy=args.option)
     selection = proposal.get("selection") or {}
     print(f"\n--- CONTRACT  strategy={proposal.get('strategy')} status={proposal.get('status')}")

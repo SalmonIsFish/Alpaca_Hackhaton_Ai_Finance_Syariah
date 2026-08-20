@@ -19,8 +19,17 @@ from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
 from option_strategy_api import propose_option_strategy
-from paper_execution import execute_paper_order, reconcile_submitted_paper_order, validate_approval_payload_for_execution
-from portfolio_store import ensure_portfolio_tables, open_position_quantity, portfolio_snapshot, sync_filled_order
+from paper_execution import (
+    execute_paper_order,
+    reconcile_submitted_paper_order,
+    validate_approval_payload_for_execution,
+)
+from portfolio_store import (
+    ensure_portfolio_tables,
+    open_position_quantity,
+    portfolio_snapshot,
+    sync_filled_order,
+)
 from shariah_candidate import build_shariah_candidate
 from shariah_explain import explain_symbol
 from shariah_trace import describe_approval
@@ -50,7 +59,9 @@ app.add_middleware(
 def db() -> sqlite3.Connection:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    connection.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL)")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL)"
+    )
     ensure_approval_queue(connection)
     ensure_watchlist_tables(connection)
     ensure_portfolio_tables(connection)
@@ -59,7 +70,12 @@ def db() -> sqlite3.Connection:
 
 
 def broker_submission_configured(settings) -> bool:
-    return settings.paper_execution_enabled and settings.paper_execution_adapter in {"fake", "moomoo", "alpaca", "alpaca_mcp"}
+    return settings.paper_execution_enabled and settings.paper_execution_adapter in {
+        "fake",
+        "moomoo",
+        "alpaca",
+        "alpaca_mcp",
+    }
 
 
 class PaperPreviewRequest(BaseModel):
@@ -175,7 +191,9 @@ def exposure_value(position: dict) -> float:
 
 
 def add_exposure_metadata(snapshot: dict, *, account_equity: float) -> dict:
-    total_exposure = round(sum(exposure_value(position) for position in snapshot.get("positions", [])), 4)
+    total_exposure = round(
+        sum(exposure_value(position) for position in snapshot.get("positions", [])), 4
+    )
     snapshot["paper_account_equity"] = account_equity
     snapshot["total_exposure"] = total_exposure
     snapshot["total_exposure_pct"] = round((total_exposure / account_equity) * 100, 4)
@@ -223,7 +241,9 @@ def positions_snapshot(connection: sqlite3.Connection) -> dict:
                 "exposure_value": position.get("exposure_value"),
                 "account_exposure_pct": account_exposure_pct,
                 "exposure_weight_pct": position.get("exposure_weight_pct"),
-                "position_limit_status": "PASS" if account_exposure_pct <= max_position_pct else "BREACH",
+                "position_limit_status": "PASS"
+                if account_exposure_pct <= max_position_pct
+                else "BREACH",
                 "valuation_status": valuation_status,
                 "valuation_error": position.get("valuation_error"),
                 "reduce_eligible": quantity > 0,
@@ -239,7 +259,8 @@ def positions_snapshot(connection: sqlite3.Connection) -> dict:
         "total_exposure": portfolio.get("total_exposure"),
         "total_exposure_pct": portfolio.get("total_exposure_pct"),
         "total_exposure_status": "PASS"
-        if float(portfolio.get("total_exposure_pct") or 0) <= float(limits.get("max_total_exposure_pct") or 0)
+        if float(portfolio.get("total_exposure_pct") or 0)
+        <= float(limits.get("max_total_exposure_pct") or 0)
         else "BREACH",
         "risk_limits": limits,
         "valuation_status": portfolio.get("valuation_status"),
@@ -273,8 +294,12 @@ def compact_market_candidate(row: dict) -> dict:
         "alert_status": row.get("alert_status") or item.get("alert_status"),
         "ready_for_approval": bool(row.get("ready_for_approval") or item.get("ready_for_approval")),
         "price": row.get("price") if row.get("price") is not None else item.get("price"),
-        "trigger_price": row.get("trigger_price") if row.get("trigger_price") is not None else item.get("trigger_price"),
-        "breakout_gap_pct": row.get("breakout_gap_pct") if row.get("breakout_gap_pct") is not None else item.get("breakout_gap_pct"),
+        "trigger_price": row.get("trigger_price")
+        if row.get("trigger_price") is not None
+        else item.get("trigger_price"),
+        "breakout_gap_pct": row.get("breakout_gap_pct")
+        if row.get("breakout_gap_pct") is not None
+        else item.get("breakout_gap_pct"),
         "distance_to_trigger": item.get("distance_to_trigger"),
         "shariah_status": item.get("shariah_status"),
         "quant_signal": item.get("quant_signal"),
@@ -293,7 +318,9 @@ def compact_market_candidate(row: dict) -> dict:
     }
 
 
-def market_overview_snapshot(connection: sqlite3.Connection, *, stale_cache_hours: float = 24.0) -> dict:
+def market_overview_snapshot(
+    connection: sqlite3.Connection, *, stale_cache_hours: float = 24.0
+) -> dict:
     settings = load_settings()
     watchlist = get_watchlist_settings(connection)
     symbols = watchlist["symbols"]
@@ -332,12 +359,20 @@ def market_overview_snapshot(connection: sqlite3.Connection, *, stale_cache_hour
         if cache_age is not None and float(cache_age) > stale_cache_hours:
             stale_cache_symbols.append(candidate["symbol"])
 
-    latest_scan_times = [candidate["latest_scan"]["scanned_at"] for candidate in candidates if candidate["latest_scan"]["scanned_at"]]
+    latest_scan_times = [
+        candidate["latest_scan"]["scanned_at"]
+        for candidate in candidates
+        if candidate["latest_scan"]["scanned_at"]
+    ]
     latest_scan_at = max(latest_scan_times) if latest_scan_times else None
     unscanned_symbols = [symbol for symbol in symbols if symbol not in result_symbols]
     ready_candidates = [candidate for candidate in candidates if candidate["ready_for_approval"]]
-    alert_candidates = [candidate for candidate in candidates if candidate.get("alert_status") == "ALERT"]
-    data_error_candidates = [candidate for candidate in candidates if candidate.get("watch_status") == "DATA_ERROR"]
+    alert_candidates = [
+        candidate for candidate in candidates if candidate.get("alert_status") == "ALERT"
+    ]
+    data_error_candidates = [
+        candidate for candidate in candidates if candidate.get("watch_status") == "DATA_ERROR"
+    ]
     return {
         "status": "OK",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -419,7 +454,9 @@ def latest_execution_events(connection: sqlite3.Connection, *, limit: int = 25) 
                 "queue_id": payload.get("queue_id"),
                 "status": payload.get("status"),
                 "broker_submission": bool(payload.get("broker_submission")),
-                "message": payload.get("message") or payload.get("execution_message") or payload.get("reason"),
+                "message": payload.get("message")
+                or payload.get("execution_message")
+                or payload.get("reason"),
             }
         )
     return events
@@ -428,9 +465,19 @@ def latest_execution_events(connection: sqlite3.Connection, *, limit: int = 25) 
 def execution_audit_row(approval: dict, synced_fills: set[int]) -> dict:
     payload = parse_json_object(approval.get("payload"))
     preview = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
-    quote = preview.get("quote_snapshot") if isinstance(preview.get("quote_snapshot"), dict) else None
-    broker_submission = payload.get("broker_submission") if isinstance(payload.get("broker_submission"), dict) else None
-    broker_reconciliation = payload.get("broker_reconciliation") if isinstance(payload.get("broker_reconciliation"), dict) else None
+    quote = (
+        preview.get("quote_snapshot") if isinstance(preview.get("quote_snapshot"), dict) else None
+    )
+    broker_submission = (
+        payload.get("broker_submission")
+        if isinstance(payload.get("broker_submission"), dict)
+        else None
+    )
+    broker_reconciliation = (
+        payload.get("broker_reconciliation")
+        if isinstance(payload.get("broker_reconciliation"), dict)
+        else None
+    )
     approval_audit = (
         validate_approval_payload_for_execution(approval)
         if approval.get("approval_status") == "APPROVED_PAPER_READY"
@@ -452,8 +499,12 @@ def execution_audit_row(approval: dict, synced_fills: set[int]) -> dict:
         "execution_environment": approval.get("execution_environment"),
         "broker_submission": bool(approval.get("broker_submission")),
         "broker_order_id": broker_submission.get("broker_order_id") if broker_submission else None,
-        "broker_reconciliation_status": broker_reconciliation.get("status") if broker_reconciliation else None,
-        "broker_order_status": broker_reconciliation.get("order_status") if broker_reconciliation else None,
+        "broker_reconciliation_status": broker_reconciliation.get("status")
+        if broker_reconciliation
+        else None,
+        "broker_order_status": broker_reconciliation.get("order_status")
+        if broker_reconciliation
+        else None,
         "fill_synced": queue_id in synced_fills,
         "has_quote_snapshot": quote is not None,
         "quote_snapshot_source": quote.get("source") if quote else None,
@@ -507,7 +558,9 @@ def execution_audit_snapshot(connection: sqlite3.Connection, *, limit: int = 100
             "approval_rows": len(rows),
             "pending_execution": len(pending_execution),
             "broker_submitted": len(broker_submitted),
-            "broker_filled": sum(1 for row in rows if row["broker_reconciliation_status"] == "BROKER_FILLED"),
+            "broker_filled": sum(
+                1 for row in rows if row["broker_reconciliation_status"] == "BROKER_FILLED"
+            ),
             "fill_synced": sum(1 for row in rows if row["fill_synced"]),
             "missing_fill_sync": len(missing_fill_sync),
             "payload_audit_failures": len(failed_payload_rows),
@@ -568,11 +621,17 @@ def stock_profile_snapshot(connection: sqlite3.Connection, symbol: str) -> dict:
         profile["latest_opportunity"] = latest_results[0]
 
     portfolio = portfolio_snapshot_with_exposure(connection)
-    positions = [position for position in portfolio.get("positions", []) if position.get("symbol") == normalized_symbol]
+    positions = [
+        position
+        for position in portfolio.get("positions", [])
+        if position.get("symbol") == normalized_symbol
+    ]
     market_value = round(sum(float(position.get("market_value") or 0) for position in positions), 4)
     cost_basis = round(sum(float(position.get("cost_basis") or 0) for position in positions), 4)
     quantity = round(sum(float(position.get("quantity") or 0) for position in positions), 4)
-    unrealized_pnl = round(sum(float(position.get("unrealized_pnl") or 0) for position in positions), 4)
+    unrealized_pnl = round(
+        sum(float(position.get("unrealized_pnl") or 0) for position in positions), 4
+    )
     exposure_value_total = round(sum(exposure_value(position) for position in positions), 4)
     profile["portfolio"] = {
         "positions": positions,
@@ -580,10 +639,14 @@ def stock_profile_snapshot(connection: sqlite3.Connection, symbol: str) -> dict:
         "cost_basis": cost_basis,
         "market_value": market_value,
         "unrealized_pnl": unrealized_pnl,
-        "account_exposure_pct": round((exposure_value_total / settings.paper_account_equity) * 100, 4),
+        "account_exposure_pct": round(
+            (exposure_value_total / settings.paper_account_equity) * 100, 4
+        ),
         "valuation_status": portfolio.get("valuation_status"),
         "valuation_errors": [
-            error for error in portfolio.get("valuation_errors", []) if error.get("symbol") == normalized_symbol
+            error
+            for error in portfolio.get("valuation_errors", [])
+            if error.get("symbol") == normalized_symbol
         ],
     }
     return profile
@@ -623,7 +686,9 @@ def committee_status(item: dict) -> str:
 def investment_committee_snapshot(connection: sqlite3.Connection, *, limit: int = 50) -> dict:
     settings = load_settings()
     watchlist = get_watchlist_settings(connection)
-    latest_results = list_latest_scan_results(connection, symbols=watchlist["symbols"], limit=max(1, min(200, limit)))
+    latest_results = list_latest_scan_results(
+        connection, symbols=watchlist["symbols"], limit=max(1, min(200, limit))
+    )
     approvals = list_approvals(connection, limit=max(1, min(200, limit)))
     portfolio = portfolio_snapshot_with_exposure(connection)
 
@@ -663,9 +728,12 @@ def investment_committee_snapshot(connection: sqlite3.Connection, *, limit: int 
     pending_approvals = [
         compact_approval(approval)
         for approval in approvals
-        if approval.get("approval_status") == "APPROVED_PAPER_READY" and not approval.get("broker_submission")
+        if approval.get("approval_status") == "APPROVED_PAPER_READY"
+        and not approval.get("broker_submission")
     ]
-    submitted_orders = [compact_approval(approval) for approval in approvals if approval.get("broker_submission")]
+    submitted_orders = [
+        compact_approval(approval) for approval in approvals if approval.get("broker_submission")
+    ]
     return {
         "status": "OK",
         "trading_mode": settings.trading_mode,
@@ -679,10 +747,18 @@ def investment_committee_snapshot(connection: sqlite3.Connection, *, limit: int 
         },
         "counts": {
             "candidates": len(candidates),
-            "ready_for_review": sum(1 for candidate in candidates if candidate["committee_status"] == "READY_FOR_REVIEW"),
-            "watch_alerts": sum(1 for candidate in candidates if candidate["committee_status"] == "WATCH_ALERT"),
-            "blocked": sum(1 for candidate in candidates if candidate["committee_status"] == "BLOCKED"),
-            "data_errors": sum(1 for candidate in candidates if candidate["committee_status"] == "DATA_ERROR"),
+            "ready_for_review": sum(
+                1 for candidate in candidates if candidate["committee_status"] == "READY_FOR_REVIEW"
+            ),
+            "watch_alerts": sum(
+                1 for candidate in candidates if candidate["committee_status"] == "WATCH_ALERT"
+            ),
+            "blocked": sum(
+                1 for candidate in candidates if candidate["committee_status"] == "BLOCKED"
+            ),
+            "data_errors": sum(
+                1 for candidate in candidates if candidate["committee_status"] == "DATA_ERROR"
+            ),
             "pending_approvals": len(pending_approvals),
             "submitted_orders": len(submitted_orders),
             "open_positions": portfolio.get("position_count", 0),
@@ -711,7 +787,9 @@ def risk_limits_from_settings(settings) -> dict:
     }
 
 
-def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict) -> dict:
+def portfolio_risk_overlay(
+    connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict
+) -> dict:
     settings = load_settings()
     limits = risk_limits_from_settings(settings)
     symbol = evaluation.get("symbol") or request.symbol.strip().upper()
@@ -719,16 +797,24 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
     selected_price = evaluation.get("price") or request.price
     notional = round(request.quantity * selected_price, 4) if selected_price else 0
     snapshot = portfolio_snapshot_with_exposure(connection)
-    matching_positions = [position for position in snapshot.get("positions", []) if position.get("symbol") == symbol]
+    matching_positions = [
+        position for position in snapshot.get("positions", []) if position.get("symbol") == symbol
+    ]
     current_position_exposure = round(
         sum(exposure_value(position) for position in matching_positions),
         4,
     )
-    current_position_quantity = round(sum(float(position.get("quantity") or 0) for position in matching_positions), 4)
+    current_position_quantity = round(
+        sum(float(position.get("quantity") or 0) for position in matching_positions), 4
+    )
     current_total_exposure = round(snapshot.get("total_exposure") or 0, 4)
     if side == "SELL":
         projected_position_quantity = max(0, round(current_position_quantity - request.quantity, 4))
-        remaining_ratio = projected_position_quantity / current_position_quantity if current_position_quantity else 0
+        remaining_ratio = (
+            projected_position_quantity / current_position_quantity
+            if current_position_quantity
+            else 0
+        )
         projected_position_exposure = round(current_position_exposure * remaining_ratio, 4)
         reduced_exposure = round(current_position_exposure - projected_position_exposure, 4)
         projected_total_exposure = max(0, round(current_total_exposure - reduced_exposure, 4))
@@ -736,7 +822,9 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
         projected_position_quantity = round(current_position_quantity + request.quantity, 4)
         projected_position_exposure = max(0, round(current_position_exposure + notional, 4))
         projected_total_exposure = max(0, round(current_total_exposure + notional, 4))
-    projected_position_pct = round((projected_position_exposure / settings.paper_account_equity) * 100, 4)
+    projected_position_pct = round(
+        (projected_position_exposure / settings.paper_account_equity) * 100, 4
+    )
     projected_total_pct = round((projected_total_exposure / settings.paper_account_equity) * 100, 4)
     effective_position_pct = max(request.position_pct, projected_position_pct)
     effective_total_pct = max(request.total_exposure_pct, projected_total_pct)
@@ -745,22 +833,42 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
     messages = {}
     if projected_position_pct > limits["max_position_pct"]:
         blockers.append("portfolio_position_limit")
-        messages["portfolio_position_limit"] = f"{symbol} would become {projected_position_pct:.2f}% of paper account equity, above the {limits['max_position_pct']:.2f}% position limit."
+        messages["portfolio_position_limit"] = (
+            f"{symbol} would become {projected_position_pct:.2f}% of paper account equity, above the {limits['max_position_pct']:.2f}% position limit."
+        )
     if projected_total_pct > limits["max_total_exposure_pct"]:
         blockers.append("portfolio_total_exposure_limit")
-        messages["portfolio_total_exposure_limit"] = f"Total projected exposure would become {projected_total_pct:.2f}% of paper account equity, above the {limits['max_total_exposure_pct']:.2f}% total exposure limit."
+        messages["portfolio_total_exposure_limit"] = (
+            f"Total projected exposure would become {projected_total_pct:.2f}% of paper account equity, above the {limits['max_total_exposure_pct']:.2f}% total exposure limit."
+        )
     if side == "BUY" and current_position_exposure > 0:
         blockers.append("portfolio_existing_position")
-        messages["portfolio_existing_position"] = f"{symbol} is already held locally; same-symbol BUY add-ons are blocked until the risk policy is changed."
+        messages["portfolio_existing_position"] = (
+            f"{symbol} is already held locally; same-symbol BUY add-ons are blocked until the risk policy is changed."
+        )
     if side == "SELL" and current_position_quantity <= 0:
         blockers.append("portfolio_sell_without_position")
-        messages["portfolio_sell_without_position"] = f"{symbol} cannot be sold because no local paper position is recorded."
-    if side == "SELL" and current_position_quantity > 0 and request.quantity > current_position_quantity:
+        messages["portfolio_sell_without_position"] = (
+            f"{symbol} cannot be sold because no local paper position is recorded."
+        )
+    if (
+        side == "SELL"
+        and current_position_quantity > 0
+        and request.quantity > current_position_quantity
+    ):
         blockers.append("portfolio_sell_exceeds_position")
-        messages["portfolio_sell_exceeds_position"] = f"Sell quantity {request.quantity} exceeds the local {symbol} position of {current_position_quantity:g}."
-    if side == "SELL" and current_position_quantity > 0 and request.quantity <= current_position_quantity:
+        messages["portfolio_sell_exceeds_position"] = (
+            f"Sell quantity {request.quantity} exceeds the local {symbol} position of {current_position_quantity:g}."
+        )
+    if (
+        side == "SELL"
+        and current_position_quantity > 0
+        and request.quantity <= current_position_quantity
+    ):
         warnings.append("portfolio_reduce_position")
-        messages["portfolio_reduce_position"] = f"{symbol} SELL would reduce the local position from {current_position_quantity:g} to {projected_position_quantity:g} shares."
+        messages["portfolio_reduce_position"] = (
+            f"{symbol} SELL would reduce the local position from {current_position_quantity:g} to {projected_position_quantity:g} shares."
+        )
     return {
         "status": "PASS" if not blockers else "REJECT",
         "reason": "portfolio_limits_passed" if not blockers else "portfolio_limit_failed",
@@ -789,18 +897,28 @@ def portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreview
     }
 
 
-def apply_portfolio_risk_overlay(connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict) -> dict:
+def apply_portfolio_risk_overlay(
+    connection: sqlite3.Connection, request: PaperPreviewRequest, evaluation: dict
+) -> dict:
     overlay = portfolio_risk_overlay(connection, request, evaluation)
     risk = evaluation.setdefault("agent_summary", {}).setdefault("risk", {})
     details = risk.setdefault("details", {})
     checks = details.setdefault("checks", {})
     limits = overlay["limits"]
-    checks["portfolio_position_ceiling"] = overlay["projected_position_pct"] <= limits["max_position_pct"]
-    checks["portfolio_total_exposure"] = overlay["projected_total_exposure_pct"] <= limits["max_total_exposure_pct"]
+    checks["portfolio_position_ceiling"] = (
+        overlay["projected_position_pct"] <= limits["max_position_pct"]
+    )
+    checks["portfolio_total_exposure"] = (
+        overlay["projected_total_exposure_pct"] <= limits["max_total_exposure_pct"]
+    )
     details["portfolio"] = overlay
     if request.side.strip().upper() == "SELL" and overlay["status"] == "PASS":
         blockers = evaluation.setdefault("blockers", [])
-        blockers[:] = [blocker for blocker in blockers if blocker not in {"only_buy_side_supported", "quant_no_buy_signal"}]
+        blockers[:] = [
+            blocker
+            for blocker in blockers
+            if blocker not in {"only_buy_side_supported", "quant_no_buy_signal"}
+        ]
         if not blockers:
             evaluation["decision"] = "READY_FOR_APPROVAL"
     if overlay["status"] != "PASS":
@@ -935,7 +1053,11 @@ def mounted_dashboard_url() -> str | None:
     deployment; running local_api alone does not. Reported only when the mount
     is actually present, so this never advertises a path that would 404.
     """
-    return "/dashboard/" if any(getattr(route, "path", None) == "/dashboard" for route in app.routes) else None
+    return (
+        "/dashboard/"
+        if any(getattr(route, "path", None) == "/dashboard" for route in app.routes)
+        else None
+    )
 
 
 @app.get("/")
@@ -1022,7 +1144,9 @@ def market_data_status(symbol: str) -> dict:
 def market_overview(stale_cache_hours: float = 24.0) -> dict:
     connection = db()
     try:
-        return market_overview_snapshot(connection, stale_cache_hours=max(0.0, min(168.0, stale_cache_hours)))
+        return market_overview_snapshot(
+            connection, stale_cache_hours=max(0.0, min(168.0, stale_cache_hours))
+        )
     finally:
         connection.close()
 
@@ -1125,11 +1249,15 @@ def opportunities(
     connection = db()
     try:
         settings = get_watchlist_settings(connection)
-        snapshot = latest_scan_snapshot(connection, symbols=settings["symbols"] if symbols is None else symbols.split(","))
+        snapshot = latest_scan_snapshot(
+            connection, symbols=settings["symbols"] if symbols is None else symbols.split(",")
+        )
     finally:
         connection.close()
     selected_symbols = symbols if symbols is not None else ",".join(settings["symbols"])
-    selected_threshold = alert_threshold_pct if alert_threshold_pct is not None else settings["alert_threshold_pct"]
+    selected_threshold = (
+        alert_threshold_pct if alert_threshold_pct is not None else settings["alert_threshold_pct"]
+    )
     throttle_minutes = max(0, min(120, min_scan_interval_minutes))
     if not force and throttle_minutes and snapshot is not None:
         last_scan_at = datetime.fromisoformat(snapshot["created_at"])
@@ -1170,7 +1298,14 @@ def opportunities(
         )
     finally:
         connection.close()
-    return {"status": "SCANNED", "throttled": False, "scan_id": audit["id"], "created_at": audit["created_at"], "alert_events": alert_events, **scan}
+    return {
+        "status": "SCANNED",
+        "throttled": False,
+        "scan_id": audit["id"],
+        "created_at": audit["created_at"],
+        "alert_events": alert_events,
+        **scan,
+    }
 
 
 @app.get("/opportunity-alerts")
@@ -1191,7 +1326,12 @@ def moomoo_status() -> dict:
 def evaluate_agents(request: PaperPreviewRequest) -> dict:
     evaluation = evaluate_preview_request(request)
     audit = add_audit_event("agent_evaluation", evaluation)
-    return {"evaluation_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "evaluation": evaluation}
+    return {
+        "evaluation_id": audit["id"],
+        "created_at": audit["created_at"],
+        "broker_submission": False,
+        "evaluation": evaluation,
+    }
 
 
 @app.post("/paper/preview")
@@ -1235,7 +1375,12 @@ def preview_paper_order(request: PaperPreviewRequest) -> dict:
     preview["option_contract"] = request.option_contract
 
     audit = add_audit_event("paper_preview", preview)
-    return {"preview_id": audit["id"], "created_at": audit["created_at"], "broker_submission": False, "preview": preview}
+    return {
+        "preview_id": audit["id"],
+        "created_at": audit["created_at"],
+        "broker_submission": False,
+        "preview": preview,
+    }
 
 
 def broker_account_context(connection, preview: dict) -> dict:
@@ -1253,6 +1398,7 @@ def broker_account_context(connection, preview: dict) -> dict:
             "shares_held": 0,
             "cash_collateral": 0.0,
             "uses_margin": False,
+            "broker_status": "adapter_not_alpaca",
         }
 
     status = check_alpaca_status()
@@ -1271,6 +1417,14 @@ def broker_account_context(connection, preview: dict) -> dict:
         # We cannot prove an individual order avoids borrowed funds on a margin
         # account, so treat the account type as the conservative answer.
         "uses_margin": account_type == "MARGIN",
+        # Whether the broker actually answered. Without this a failed account
+        # query is indistinguishable from a real account holding nothing, and
+        # the strategy layer restates a network blip as "no settled cash
+        # available to secure a put" -- sending the operator after a collateral
+        # problem that does not exist. The gates already fail closed on
+        # account_type UNKNOWN; this is so the *reason* is honest and the caller
+        # can see the condition is retryable.
+        "broker_status": str(status.get("status") or "unknown"),
     }
 
 
@@ -1300,9 +1454,15 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
         shariah_override=shariah or None,
     )
     candidate["notional"] = preview.get("notional")
-    shariah_trace = describe_approval(symbol=candidate["symbol"], shariah=shariah, candidate=candidate)
+    shariah_trace = describe_approval(
+        symbol=candidate["symbol"], shariah=shariah, candidate=candidate
+    )
     if preview.get("status") != "READY_FOR_APPROVAL":
-        approval = {"status": "REJECT", "reason": "preview_not_ready_for_approval", "broker_submission": False}
+        approval = {
+            "status": "REJECT",
+            "reason": "preview_not_ready_for_approval",
+            "broker_submission": False,
+        }
     elif risk.get("status") != "PASS":
         approval = {"status": "REJECT", "reason": "risk_gate_failed", "broker_submission": False}
     else:
@@ -1312,12 +1472,20 @@ def approve_paper_order(request: PaperApprovalRequest) -> dict:
     approval["shariah_trace"] = shariah_trace
     connection = db()
     try:
-        queue_item = record_approval(connection, preview=preview, approval=approval, approved_by_user=request.approved)
+        queue_item = record_approval(
+            connection, preview=preview, approval=approval, approved_by_user=request.approved
+        )
     finally:
         connection.close()
     payload = {"approved_by_user": request.approved, "approval": approval, "preview": preview}
     audit = add_audit_event("paper_approval", payload)
-    return {"approval_id": audit["id"], "queue_id": queue_item["id"], "created_at": audit["created_at"], "broker_submission": False, "approval": approval}
+    return {
+        "approval_id": audit["id"],
+        "queue_id": queue_item["id"],
+        "created_at": audit["created_at"],
+        "broker_submission": False,
+        "approval": approval,
+    }
 
 
 @app.post("/audit")
@@ -1338,7 +1506,9 @@ def execution_audit(limit: int = 100) -> dict:
 def list_audit() -> list[dict]:
     connection = db()
     try:
-        rows = connection.execute("SELECT id, created_at, event_type, payload FROM audit_events ORDER BY id DESC LIMIT 100").fetchall()
+        rows = connection.execute(
+            "SELECT id, created_at, event_type, payload FROM audit_events ORDER BY id DESC LIMIT 100"
+        ).fetchall()
         return [dict(row) for row in rows]
     finally:
         connection.close()
