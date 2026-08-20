@@ -9,11 +9,18 @@
 The **Alpaca AI Trading Agents Hackathon** (Aug 28 – Sep 4, 2026) requires submissions to:
 1. Run on Alpaca's paper trading API via MCP server or CLI
 2. Incorporate options trading
-3. Deploy to **Streamlit, Replit, or Vercel** (one of these three is mandatory)
+3. Deploy to a hosted demo with a public Application URL
 4. Include video + pitch deck + GitHub repo
 5. Use a **dedicated new Alpaca paper account** created for the hackathon (existing/reused accounts ineligible)
 
 This document covers hosting constraints for each platform when running **FastAPI backend + static HTML dashboard**, and identifies risks for Terminal 1's demo deployment work.
+
+**Correction (2026-08-21):** item 3 originally read "Deploy to Streamlit, Replit, or Vercel (one
+of these three is mandatory)." The actual submission form has no such restriction — it's a
+free-text Application URL field. The project now hosts on a self-managed VPS at
+`https://amanahtrader.uk`, which satisfies the requirement. The platform-specific analysis below
+is kept for reference (it's what informed the original Replit choice) but is no longer a
+constraint driving the hosting decision.
 
 ---
 

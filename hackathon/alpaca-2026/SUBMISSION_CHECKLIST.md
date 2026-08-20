@@ -53,8 +53,10 @@ Alpaca directly (outside the MCP server), follow the existing pattern in `backen
 - [ ] Video presentation — **MP4**.
 - [ ] Slide presentation — **PDF**.
 - [ ] Public **GitHub repository**.
-- [ ] Demo application hosted on **Streamlit, Replit, or Vercel** (per general Rule Book).
-- [ ] Application URL.
+- [ ] Application URL for the hosted demo. **Correction (2026-08-21):** the actual submission
+      form has no platform restriction — it's a free-text Application URL field, not a choice
+      among Streamlit/Replit/Vercel. Any working, publicly reachable URL qualifies (the project
+      now hosts on a self-managed VPS at `https://amanahtrader.uk`).
 - [ ] Alpaca paper trading account ID (see Account setup above).
 - [ ] Up to 5 social media post links (X or LinkedIn), tagging **@lablabai**/lablab.ai and
       **@AlpacaHQ**/Alpaca. Optional but scored under the extra "Build in Public" challenge and the
