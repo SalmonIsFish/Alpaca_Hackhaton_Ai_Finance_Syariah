@@ -266,12 +266,13 @@ suite not run as part of the regular list above.
 
    **What this does not prove.** It ran on the *test* paper account (`0TCX`) from a *local*
    checkout. The submission demo trade still has to happen on the dedicated hackathon account
-   once that is provisioned, and it should be run **against the deployed Replit instance, not
-   locally** — `backend/*.db` is gitignored by design, so a locally-run trade writes to a local
-   SQLite file that the deployed instance never sees. Its positions and fills would simply be
-   absent from the demo. This is not hypothetical: the CVX position above lives in the
-   `.worktrees/live-trade-backend` database and appears in no other checkout. Run the demo
-   trade through the deployed instance so its own database captures the position naturally.
+   once that is provisioned, and it should be run **against the deployed instance at
+   https://amanahtrader.uk, not locally** — `backend/*.db` is gitignored by design, so a
+   locally-run trade writes to a local SQLite file that the deployed instance never sees. Its
+   positions and fills would simply be absent from the demo. This is not hypothetical: the CVX
+   position above lives in the `.worktrees/live-trade-backend` database and appears in no other
+   checkout. Run the demo trade through the deployed instance so its own database captures the
+   position naturally.
 
    `test_option_execution_smoke.py` still covers the paths a single live trade cannot: a
    covered call, an unsupported strategy, a margin account, and an under-collateralized

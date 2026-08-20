@@ -194,9 +194,9 @@ chain is worth more than any further equity trade.
 
 **5. The proven trade lives in a database no deployment can see.**
 `backend/*.db` is gitignored by design, so the CVX position sits only in the
-`.worktrees/live-trade-backend` SQLite file. The deployed Replit instance has its own empty
-database. Any trade meant to appear in the demo must be run **against the deployed instance**,
-not locally. Easy to hit twice; see the demo-trade step below.
+`.worktrees/live-trade-backend` SQLite file. The deployed instance at https://amanahtrader.uk has
+its own empty database. Any trade meant to appear in the demo must be run **against the deployed
+instance**, not locally. Easy to hit twice; see the demo-trade step below.
 
 **6. The margin fix is pending scholar review.**
 `docs/shariah-policy/margin-account-policy.md` records a decision, not a settled ruling. It is
@@ -366,7 +366,7 @@ against the strategy endpoint, 2 against the single-screening-path check, all ca
    open questions first (purification scope, re-screen trigger, cache TTL). This is the largest
    genuinely open backend item, and every call to `/explain` currently pays for its absence.
 2. **Run the submission demo trade on the dedicated hackathon account, through the deployed
-   Replit instance.** Not locally — see broken/missing #5. Provision the account, confirm
+   instance at https://amanahtrader.uk.** Not locally — see broken/missing #5. Provision the account, confirm
    `check_alpaca_status` reports `CASH` (apply `provision_cash_account.py` if it does not), then
    drive preview → approval → `EXECUTE PAPER` → reconcile against the deployment so its own
    database captures the position.
