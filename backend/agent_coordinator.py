@@ -25,7 +25,9 @@ def evaluate_candidate(
     normalized_symbol = symbol.strip().upper()
     normalized_side = side.strip().upper()
 
-    shariah = shariah_override if shariah_override is not None else evaluate_shariah(normalized_symbol)
+    shariah = (
+        shariah_override if shariah_override is not None else evaluate_shariah(normalized_symbol)
+    )
     quant = quant_override if quant_override is not None else evaluate_quant(normalized_symbol)
     selected_price = price if price is not None else quant.get("price")
     risk = evaluate_risk(
@@ -49,7 +51,20 @@ def evaluate_candidate(
         blockers.append("only_buy_side_supported")
     if shariah["status"] != "PASS":
         blockers.append("shariah_rejected")
-    if quant.get("signal") != "BUY":
+    # The quant agent decides whether to open a directional long, so its BUY
+    # signal is an equity-entry filter -- the same shape of equity-only rule as
+    # the side restriction above. No Level 1 option structure is a directional
+    # entry: a covered call is written against stock already owned, a
+    # cash-secured put means "willing to own at this price" rather than "this is
+    # breaking out today", and buying a short leg back reduces risk. Requiring a
+    # breakout for any of them blocks the strategy whenever the underlying is
+    # merely calm, which on 2026-08-20 was 19 of 21 liquid large caps.
+    #
+    # This removes no protection. That the shares are owned and the cash is
+    # committed is proven by option_structure_gate and account_shariah_gate at
+    # approval time; the signal below is reported either way, just not as a
+    # blocker.
+    if asset_class != "option" and quant.get("signal") != "BUY":
         blockers.append("quant_no_buy_signal")
     if risk["status"] != "PASS":
         blockers.append("risk_rejected")

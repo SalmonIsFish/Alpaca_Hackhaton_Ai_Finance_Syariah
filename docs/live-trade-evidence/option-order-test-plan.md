@@ -85,7 +85,7 @@ Stop the run and escalate rather than working around any of these:
 | **The account stops reporting `CASH`** | `account_shariah_gate` will reject everything. Re-check `provision_cash_account.py`; do not proceed on a margin account. |
 | **Assignment risk becomes material** | A 4% OTM 1-DTE put should expire worthless. If the underlying moves toward the strike, assignment means buying 100 CVX for $19,750 — permitted and cash-secured, but it changes account state before the competition run. Decide deliberately, do not discover it. |
 
-## Systemic flaw already surfaced — needs a human decision
+## Systemic flaw surfaced and fixed — 2026-08-20
 
 `agent_coordinator.evaluate_candidate` requires `quant.signal == "BUY"` for **every** order,
 including sell-to-open options. This is not a Shariah gate; it is an equity momentum signal.
@@ -102,6 +102,28 @@ Consequences:
   signal until now.
 
 This is the same class as the two equity-only rules already fixed in that file — the BUY-only
-side restriction and the equity risk overlay applied to contracts/premium. It has deliberately
-**not** been changed here, because it sits next to the gate chain and the standing instruction
-is to report rather than adjust. It should be decided before 2026-08-28, not on the day.
+side restriction and the equity risk overlay applied to contracts/premium.
+
+**Resolved the same day**, on the project owner's decision, after being reported rather than
+adjusted unilaterally. The filter is now scoped to non-option orders:
+
+```python
+if asset_class != "option" and quant.get("signal") != "BUY":
+    blockers.append("quant_no_buy_signal")
+```
+
+which mirrors the side restriction one line above it. No gate was touched — the quant agent is
+a strategy filter, not one of the six protected gates. Ownership and collateral are still proven
+by `option_structure_gate` and `account_shariah_gate` at approval time, and the signal is still
+reported in `agent_summary.quant`, just not as a blocker.
+
+Verified on live data, same symbol at the same moment:
+
+| order | before | after |
+|---|---|---|
+| AAPL cash-secured put, 1 contract, sell to open | `REJECT` — `quant_no_buy_signal` | `READY_FOR_APPROVAL`, quant reported as `NO_SIGNAL` |
+| AAPL equity BUY @ 316.90 | `REJECT` — `quant_no_buy_signal` | `REJECT` — `quant_no_buy_signal` (unchanged, correctly) |
+
+Mutation-checked three ways — reverting the fix, dropping the filter for equity too, and
+inverting which asset class is exempt — each caught by both `test_agent_coordinator.py` and
+`test_option_execution_smoke.py` scenario 5.
