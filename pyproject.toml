@@ -1,3 +1,18 @@
+[project]
+# Exists so Replit's Autoscale Python-module runtime has a real dependency set to
+# `uv sync` against -- without one, uv resolves an empty project and uninstalls
+# whatever `backend/replit_start.sh`'s `pip install -r requirements.txt` put there,
+# which is what broke publishing. Keep this mirrored to backend/requirements.txt;
+# this file is otherwise Ruff-config-only, not a uv-managed project (no lockfile is
+# committed, local dev never runs `uv sync`).
+name = "amanah-trader"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
