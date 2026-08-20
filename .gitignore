@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 backend/*.db
 backend/market_data_cache/
+backend/sec_edgar_cache/
 tmp/
 .ruff_cache/
 

@@ -165,6 +165,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_quant_agent_provider.py
 .\.venv\Scripts\python.exe backend\test_repo_defaults.py
 .\.venv\Scripts\python.exe backend\test_risk_checks.py
+.\.venv\Scripts\python.exe backend\test_sec_edgar_cache.py
 .\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_shariah_explain.py
@@ -176,7 +177,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_watchlist_store.py
 ```
 
-All 38 of those pass. There are 39 `test_*.py` files on disk; `test_moomoo.py` is the one
+All 39 of those pass. There are 40 `test_*.py` files on disk; `test_moomoo.py` is the one
 excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before
 touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —
@@ -208,10 +209,16 @@ suite not run as part of the regular list above.
    SIC code, and XBRL cannot separate Islamic from conventional instruments, so both ratios
    are overstated. Both approximations err toward rejection.
 
-   **Cost:** a screen is a live SEC fetch of up to ~4.7 MB and takes roughly 0.7–2 s, with no
-   cache and no rate throttle. `/paper/preview` and `/stock/{symbol}/profile` now carry that
-   on every call. The screening store in NEXT_STEPS.md is what fixes it. Tests are unaffected
-   — they supply a `shariah_override` or swap the `sec_request` seam, and none reach SEC.
+   **Cost:** a cold screen is a live SEC fetch of up to ~4.7 MB taking roughly 0.7–2 s, and
+   `/paper/preview`, `/stock/{symbol}/profile` and `/stock/{symbol}/explain` all sit on it.
+   `sec_edgar_cache.py` — a **temporary shim, not the screening store** — now serves a repeat
+   fetch of the same URL from `backend/sec_edgar_cache/` for 24 h and holds live fetches to
+   ~8 req/s, under SEC's 10 req/s guidance. Measured: three symbols cold 4.53 s, warm 0.66 s
+   with no SEC request at all. It caches raw responses only, never verdicts, and never caches
+   a failure — a 404 is a fact about SEC, not about the company, and the screen fails closed
+   on ERROR. The append-only `shariah_screens` store in NEXT_STEPS.md still replaces it; delete
+   the shim then. Tests are unaffected — they supply a `shariah_override` or swap the
+   `sec_request` seam, and none reach SEC or the cache.
 2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
    shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
    diverts option fills to `paper_fills` under the OCC symbol and returns
