@@ -15,7 +15,10 @@ human typing the confirmation phrase, execute_paper_order.py.
 With --option it previews a Level 1 option instead. The contract is chosen by
 option_strategy through the same propose_option_strategy() the HTTP endpoint uses,
 and the limit defaults to the contract's *bid* so a sell-to-open is marketable and
-actually fills rather than resting inside the spread:
+actually fills rather than resting inside the spread -- but only while the market
+is open. Run it closed and that bid is the previous session's, which for a
+short-dated option can be well above where it reopens, so the order rests all day
+and expires unfilled. The script warns when the market is shut; heed it:
 
     python backend/check_paper_order.py CVX --option cash_secured_put --contracts 1
     python backend/check_paper_order.py AAPL --option covered_call --contracts 1
@@ -35,7 +38,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import local_api
-from alpaca_paper_adapter import check_alpaca_status
+from alpaca_paper_adapter import check_alpaca_status, check_market_clock
 from option_strategy_api import propose_option_strategy
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -71,6 +74,18 @@ print(
 )
 if status.get("account_type") != "CASH":
     print("\nNote: account does not report CASH; account_shariah_gate will reject at approval.")
+
+clock = check_market_clock()
+print(f"market    open={clock.get('is_open')}  next_open={clock.get('next_open')}")
+if clock.get("is_open") is not True:
+    # Every price below is then a closed-market quote, i.e. the previous
+    # session's. A limit built from it is stale before it is even submitted, and
+    # a short-dated option decays overnight, so a sell-to-open at yesterday's bid
+    # can rest all session and expire unfilled. Submitting is still allowed --
+    # the order queues to the open -- but the price should be revisited then.
+    print("\nWARNING: the market is not open, so the quote below is the previous session's.")
+    print("A limit priced off it may never become marketable. Re-run at the open to price")
+    print("against a live quote, or pass --limit yourself.")
 
 body = {
     "symbol": symbol,
