@@ -1649,6 +1649,12 @@
       optionStrategyField.hidden = !option;
       optionStrikeField.hidden = !option;
       optionExpirationField.hidden = !option;
+      // A hidden ancestor doesn't exempt this input from HTML5 constraint validation --
+      // Chrome checks the input's own display, not its hidden label's -- so its min=0.01
+      // default of 0.00 silently blocks the whole form's submit whenever asset class is
+      // Equity. disabled= does exempt it, and doesn't affect toNumber("optionStrike"),
+      // which only reads it when isOptionTicket() is true.
+      optionStrike.disabled = !option;
       quantityUnit.textContent = option ? "(contracts)" : "(shares)";
       priceUnit.textContent = option ? "(premium per share)" : "(per share)";
       // Both Level 1 strategies are written by selling to open; equity defaults to BUY.
