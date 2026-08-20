@@ -1,0 +1,26 @@
+# Cheap defense-in-depth against Replit Autoscale's idle-triggered scale-to-zero:
+# SQLite state on the deployed instance does not survive a scale-to-zero restart
+# (confirmed directly -- write a marker, let the instance idle out, marker gone).
+# A judge opening the live URL after an idle gap would see an empty dashboard.
+# This does not eliminate the risk (Autoscale can still recycle an instance for
+# its own operational reasons even under traffic), only makes the specific
+# idle-timeout case much less likely during the days that matter for judging.
+#
+# Temporary: this workflow is only useful for the hackathon submission window
+# (through judging). Delete it, or let it keep running harmlessly, afterward --
+# it costs nothing either way.
+name: Keep Replit deployment warm
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the live deployment's health endpoint
+        run: |
+          curl -sf -o /dev/null -w "health check: HTTP %{http_code}\n" \
+            "https://alpaca-hackhaton-ai-finance-syariah--adibluqman117.replit.app/health"
