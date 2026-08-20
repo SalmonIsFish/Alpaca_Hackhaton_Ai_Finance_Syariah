@@ -91,28 +91,28 @@ That's what the hackathon entry is testing. One real trade proves the chain work
 
 ---
 
-## Post 2: The Compliance Methodology (For Later)
+## Post 2: The Compliance Methodology (Ready to Post Now)
 
-**When to Post:** After compliance-logic.md has been drafted AND (ideally) after a real option order has traded live
+**When to Post:** Now — compliance-logic.md exists AND a real cash-secured put has filled live (August 20, 2026)
 
-**Context:** This post is the *differentiator content*—it's where we transparently frame the minority position on options as explored methodology, not as hidden risk. It gets its own spotlight because it's the claim that judges will scrutinize most.
+**Context:** This post is the *differentiator content*—it's where we transparently frame the minority position on options as explored methodology, not as hidden risk. It gets its own spotlight because it's the claim that judges will scrutinize most. The AAPL fill proves the structure executes correctly end-to-end; it does NOT constitute fiqh approval (that remains unreviewed and outside the scope of a technical proof).
 
 ---
 
 ### X (Twitter) Version — Post 2
 
-**Headline:** Why We Permit Covered Calls (And Why It's a Minority Position)  
+**Headline:** Why We Permit Cash-Secured Puts (And Why It's a Minority Position)  
 **Length:** ~280 characters  
-**Tone:** Technical, honest about the debate
+**Tone:** Technical, honest about the debate, tied to the live AAPL fill
 
 **Draft:**
 
 ```
 Options are haram, mainstream Islamic scholarship says.
 
-We're taking a different read: covered calls & cash-secured puts, structured with ownership + cash backing + time limits, map to permissible Islamic precedent (Khayar al-Shart, Urbun, Wa'd).
+We sold a cash-secured put on AAPL 2026-08-28 strike $305 for $1.02 premium. Full cash backing, time-bounded, maps to Islamic precedent (Urbun, Wa'd).
 
-Defensible? Yes. Mainstream? No.
+Proof the structure *works*? Yes. Proof it's *approved*? No—requires scholar review.
 
 Full argument: [link to compliance-logic.md]
 ```
@@ -121,9 +121,9 @@ Full argument: [link to compliance-logic.md]
 
 ### LinkedIn Version — Post 2
 
-**Headline:** Taking a Minority Position on Islamic Option Structures — Here's Why  
-**Length:** 400–500 words  
-**Tone:** Scholarly, transparent about risk
+**Headline:** Taking a Minority Position on Islamic Option Structures — And Proving It Works  
+**Length:** 500–600 words  
+**Tone:** Scholarly, transparent about risk, anchored to the live AAPL fill
 
 **Draft:**
 
@@ -134,40 +134,53 @@ Mainstream answer: No. Options are haram.
 
 That answer is coherent. Mufti Muhammad Taqi Usmani, the most-cited contemporary Islamic scholar, forbids options. The International Islamic Fiqh Academy (2019) forbids options. Both cite the same argument: options involve selling abstract rights (not permissible) and introduce unacceptable uncertainty (gharar).
 
-We're taking a different read. Not because they're wrong, but because we think covered calls and cash-secured puts occupy a different economic category.
+We're taking a different read. Not because they're wrong, but because we think covered calls and cash-secured puts occupy a different economic category. And on August 20, 2026, we proved the structure executes correctly against a real broker.
+
+## The Technical Proof
+
+Order AAPL260828P00305000 (cash-secured put, queue 11): 
+- Sold to open at $1.02 premium
+- Strike $305, expiry August 28, 2026 (6 days to expiry)
+- 100% cash backing: $30,500 posted as collateral
+- Filled immediately against live Alpaca paper market
+- Reconciled and verified in our live trading ledger
+
+This proves the *structure works*. It does NOT prove the *fiqh position is settled*. The methodology remains unreviewed by a Shariah Advisory Board.
 
 ## The Distinction
 
-A **naked call option** is a bet: the seller is betting the price won't rise. The buyer is betting it will. Whoever is right wins; the other loses.
+A **naked put option** is a bet: the seller bets the price won't fall below strike. The buyer bets it will. One wins; the other loses. This is gharar—pure speculation, impermissible.
 
-A **covered call** is different: the seller owns 100 shares. The seller is selling the right to buy those shares at a fixed price for a time-limited period. If the buyer exercises, the seller delivers shares already owned. If not, the seller keeps the premium.
+A **cash-secured put** is different: the seller posts cash equal to the strike price. The seller is taking a conditional obligation (if exercised, buy the shares at agreed price), backed by cash already posted. If not exercised, the seller keeps the premium. If exercised, the seller funds the purchase from the posted cash.
 
 This maps onto Islamic precedent:
 
-- **Khayar al-Shart** (classical contract law): An option attached to a sale, permissible because it's a right tied to a concrete asset
-- **Urbun** (earnest money): A conditional right with cash backing, permissible under Islamic law and AAOIFI standards
-- **Wa'd** (promises): Islamic banks use these structures for FX forwards today
+- **Urbun (earnest money, AAOIFI Standard SS 53):** A conditional right with full cash backing, permissible because the uncertainty is bounded and real assets back the commitment
+- **Wa'd/Wa'dan (promises):** Islamic banks use these structures for FX forwards today—one party commits to a future transaction at a fixed rate, with the other party holding cash or collateral to ensure performance
+- **Khayar al-Shart (classical contract law):** An option attached to a sale, permissible because it's a right tied to a concrete asset or cash
 
 ## The Framework
 
-This project's covered calls and cash-secured puts satisfy the conditions IIFA Resolution 224 sets for permissible hedging:
+This project's cash-secured puts and covered calls satisfy the conditions IIFA Resolution 224 sets for permissible hedging:
 
-✓ No riba (interest)  
-✓ No excessive gharar (uncertainty is known and bounded)  
-✓ No speculation (both structures involve asset ownership or cash backing)  
-✓ Wealth preservation intent (premium income on owned assets, not price betting)
+✓ No riba (interest) — the premium is a fee for a bounded right, not interest  
+✓ No excessive gharar — the uncertainty is known, time-bounded, and cash-backed  
+✓ No speculation — the structure involves asset ownership (covered calls) or full cash backing (cash-secured puts)  
+✓ Wealth preservation intent — premium income, not price betting  
 
 ## What We're Not Claiming
 
 This is **not** a claim that the mainstream is wrong. It's a claim that the question is worth asking separately. The logic is sound; the position is minority; the path forward is scholarship.
 
-We're documenting this as explored methodology, not as settled law. A Shariah Advisory Board review is the correct next step for any production system.
+We're documenting this as *explored methodology*, not as *settled law*. A Shariah Advisory Board review is the correct next step for any production system.
+
+The technical proof (the AAPL fill) shows the code works. It does not show the fiqh debate is closed.
 
 ## Why Transparency Matters
 
-In Islamic fintech, the worst outcome is hidden risk. We're putting the argument in writing, naming it as minority, and inviting scrutiny. That's how the scholarship gets better.
+In Islamic fintech, the worst outcome is hidden risk. We're putting the argument in writing, naming it as minority, taking the intellectual risk in public, and proving the structure is technically sound. That invites scrutiny. That's how the scholarship gets better.
 
-The hackathon is the place to take this kind of risk—explore, document, invite review, and build on what we learn.
+The hackathon is the place to take this kind of risk—explore, document, prove capability, invite review, and build on what we learn.
 
 Full argument: [link to compliance-logic.md]
 ```
@@ -178,10 +191,12 @@ Full argument: [link to compliance-logic.md]
 
 | Post | Timing | Purpose | Platform | Audience |
 |---|---|---|---|---|
-| Post 1 | Now (Aug 20) | Technical milestone: first real trade | X + LinkedIn | Engineers, traders, Islamic finance observers |
-| Post 2 | Later (Aug 25+) | Methodology & minority position | X + LinkedIn | Scholars, critics, serious observers |
+| Post 1 | ✓ Posted (Aug 19) | Technical milestone: first real equity trade (CVX) | X + LinkedIn | Engineers, traders, Islamic finance observers |
+| Post 2 | ✓ Ready Now (Aug 20) | Methodology & minority position, anchored to live option fill (AAPL put) | X + LinkedIn | Scholars, critics, serious observers |
 
-**Why separate?** Celebrating a technical win and defending a minority position are different conversations. Combining them muddies both. Post 1 says "the infrastructure works"; Post 2 says "here's the fiqh argument."
+**Why separate?** Celebrating technical wins and defending a minority position are different conversations. Combining them muddies both. Post 1 says "the infrastructure works on equity"; Post 2 says "the infrastructure works on options too, and here's why the fiqh argument matters."
+
+**Caveat on both posts:** The fills prove technical capability (code works, broker accepts orders, settlement reconciles). They do NOT prove fiqh approval (methodology remains unreviewed by Shariah Advisory Board). Keep stating this clearly in both posts and submission copy.
 
 ---
 
