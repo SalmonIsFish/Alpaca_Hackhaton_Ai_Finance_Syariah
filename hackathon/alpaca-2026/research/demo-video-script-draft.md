@@ -99,19 +99,19 @@
 
 ---
 
-### Segment 5: Approval Path (Optional if time allows) [3:30–4:15]
+### Segment 5: Approval Path (Real CVX Trade After Account Fix) [3:30–4:15]
 
-**[SHOW: Dashboard with a different order, or describe the approval flow if no live approved order is available]**
+**[SHOW: Dashboard with CVX order preview → approval → fill confirmation]**
 
-**[EDITORIAL NOTE: Check docs/live-trade-evidence/ for whether CVX was re-attempted after account fixes, or if another symbol has a live approval example. If not available, this segment can be cut entirely or replaced with a mock/diagram of what approval looks like. Do NOT invent a successful trade if none exists.]**
+*"After we fixed the account to suppress margin capabilities on August 19, 2026, the same CVX order re-ran successfully. All four gates passed.*
 
-*"[IF REAL APPROVED ORDER IS AVAILABLE]*
+*Order ID bc939dcd-edfd-428f-9227-272d2521300f (client_order_id amanah-queue-5, queue 5). Buy 1 CVX at a limit of $207.60. Submitted to Alpaca at 15:37:47 UTC, filled at $206.89 just seconds later.*
 
-*After we fixed the account to suppress margin capabilities, the same CVX order re-ran successfully. All four gates passed, and the order was submitted to Alpaca's real paper trading API. [Insert actual order ID and timestamp if available].*
+*The settlement reconciled three independent ways: the local ledger, the broker's own avg_entry_price, and the order's filled_avg_price all read 206.89. The point: this is not a simulation. This is a real order through a real gate chain against the real Alpaca paper API. The order was submitted because the code enforced every gate and found no reason to reject it."*
 
-*[IF NO REAL APPROVED ORDER, CUT THIS SEGMENT OR USE]: What you'd see in an approval flow is the same gate evaluation, but with all four gates returning ✓ PASS. The agent then constructs the Alpaca order (symbol, quantity, price, time-in-force), wraps it in our execution audit record, and sends it via the MCP server to the actual broker. The confirmation comes back, and the order flows into the settlement process."*
+**[VERIFIED FACT: All details are from reconciled-CVX.json and confirmed via NEXT_STEPS.md. This is the first real Shariah-compliant trade executed end-to-end through the system.]**
 
-**[TONE NOTE: This segment is most credible if backed by a real order. If unavailable, be transparent about showing the approval *path* rather than a live approval.]**
+**[EDITORIAL NOTE: Queue 6, a cash-secured put on CVX (minority-position option structure), was submitted post-market-open Aug 20. Status: check live-trade-evidence/ for queue-6 evidence. If filled, it is a stronger differentiator (options are the hackathon's mandatory requirement) and should move into this segment or become a separate segment. If not filled, leave this note and keep the CVX equity trade as proof-of-concept.]**
 
 ---
 
@@ -129,11 +129,13 @@
 
 *Both calculations pull directly from audited SEC filings, dated December 31, 2025. The methodology is SC/SAC—Securities Commission Malaysia, Shariah Advisory Council. The limitations are noted: business activity is a single SIC code (not perfect for complexity), XBRL can't distinguish Islamic from conventional instruments, and ratios lag the current balance sheet.*
 
-*This is not a black-box verdict. Every decision, every number, every threshold is documented with a fiqh principle and a source. Judges or scholars reading this can audit it."*
+*This is the company gate. But what about the option structures—the covered calls and cash-secured puts that this system allows? That's the minority-position argument: those structures, when asset-backed and defensive, map to permissible Islamic contract-law precedents. The Compliance Logic document walks through why, grounded in Khayar al-Shart and Urbun structures.*
 
-**[VERIFIED FACTS: All data comes from explain-CVX.json. The debt ratio (13.3%), cash ratio (2.2%), 33% threshold, fiqh principles (Riba, equity ownership), and limitations are all in the real output. This is credible documentation.]**
+*What matters here: every decision, every number, every threshold is documented with a fiqh principle and a source. Judges or scholars reading this can audit it."*
 
-**[TONE NOTE: The emphasis here is on *auditability* and *transparency*. Delivery should convey that this is real data, not marketing language.]**
+**[VERIFIED FACTS: All CVX data comes from explain-CVX.json. The debt ratio (13.3%), cash ratio (2.2%), 33% threshold, fiqh principles (Riba, equity ownership), and limitations are all in the real output. The option-structure argument is detailed in compliance-logic.md.]**
+
+**[TONE NOTE: The emphasis here is on *auditability* and *transparency*, plus the link to the deeper compliance-logic argument. Delivery should convey that this is real, auditable data—not marketing language—and that the intellectual work is documented for scrutiny.]**
 
 ---
 
@@ -143,15 +145,19 @@
 
 *"One last thing: this system represents a minority position in Islamic finance scholarship.*
 
-*Mufti Taqi Usmani and the 2019 IIFA Resolution 238 forbid options outright. Our argument—that asset-backed, defensive option structures are defensible—is not mainstream consensus. It's an intellectually honest minority view, grounded in hedging doctrine and supported by classical Islamic contract law analogues.*
+*Mufti Taqi Usmani and the 2019 IIFA Resolution 238 forbid options outright. Our argument—that asset-backed, defensive option structures are defensible—is not mainstream consensus.*
+
+*Here's how we defend it. A covered call isn't a naked option bet. It's a fee for a time-bounded right tied to shares you already own. Economically, it maps to Khayar al-Shart—conditional options recognized in classical Islamic law—or to earnest-money structures (Urbun) in modern Islamic finance. The cash-secured put is fully cash-backed, eliminating the 'abstract rights' objection.*
+
+*Is it proven? No. Requires scholar review? Yes. Defensible? We believe so. That's why the reasoning is transparent and auditable.*
 
 *Before this framework ever ran real money, it would need formal Shariah Advisory Board review and co-authorship. This hackathon is a proof-of-concept for the governance model itself: how code can enforce compliance transparently, and how that transparency allows scholars and users to evaluate the reasoning rather than just trusting a black-box verdict.*
 
-*See the Shariah Methodology Appendix for full sourcing and limitations."*
+*See the Compliance Logic document for the full economic-equivalence argument and the Shariah Methodology Appendix for complete sourcing and limitations."*
 
-**[VERIFIED FACTS: The minority-position claim is established via fiqh-primary-sources.md research. Mufti Usmani's position and IIFA Resolution 238 (2019) are primary-source verified. The Shariah Advisory Board requirement is standard for Islamic finance products. This is honest positioning.]**
+**[VERIFIED FACTS: The economic-equivalence framing is detailed in compliance-logic.md. Khayar al-Shart and Urbun precedents are sourced to primary Islamic law. Mufti Usmani's position and IIFA Resolution 238 (2019) are primary-source verified. The Shariah Advisory Board requirement is standard for Islamic finance products. This is honest positioning grounded in scholarly research.]**
 
-**[TONE NOTE: Editorial choice — how to deliver this honesty message? Direct and academic, or conversational and humble? Both work; pick your voice. The key is that it comes across as genuine transparency, not defensive.]**
+**[TONE NOTE: This segment now embeds the core intellectual defense. Delivery should convey intellectual honesty: "We have a case to make, we're making it, here's the scholarly foundation, but it's unfinished work."]**
 
 ---
 

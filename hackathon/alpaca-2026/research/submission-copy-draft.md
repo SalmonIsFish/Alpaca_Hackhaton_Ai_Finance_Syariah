@@ -20,9 +20,11 @@ Amanah Trader is a Shariah-compliant autonomous trading agent that enforces Isla
 
 ### Problem & Opportunity
 
-Mainstream Islamic finance scholarship (including the International Islamic Fiqh Academy [IIFA] and contemporary scholars like Mufti Taqi Usmani) treats conventional options as impermissible due to gharar (excessive contractual uncertainty) and the sale of abstract rights without underlying asset ownership. Hackathon rules mandate options trading for all entrants, creating a hard constraint: a strict Shariah approach would be disqualifying.
+Mainstream Islamic finance scholarship (including the International Islamic Fiqh Academy [IIFA] Resolution 238 and contemporary scholars like Mufti Taqi Usmani) treats conventional options as impermissible due to gharar (excessive contractual uncertainty) and the sale of abstract rights without underlying asset ownership. Hackathon rules mandate options trading for all entrants, creating a hard constraint: a strict Shariah approach would be disqualifying.
 
-Rather than dodge this, Amanah Trader takes the opposite approach: it argues that specific option structures—covered calls, cash-secured puts, protective puts, and collars—can be structured as defensible hedging instruments under precise conditions (asset ownership or cash backing, defensive intent, no margin leverage). This position represents a minority scholarly view, not mainstream consensus, and is the central point of intellectual honesty in the submission.
+Rather than dodge this, Amanah Trader takes the opposite approach: it argues that specific option structures—covered calls, cash-secured puts, protective puts, and collars—can be structured as defensible hedging instruments when grounded in Islamic contract-law precedent (Khayar al-Shart, Urbun, Wa'd/Wa'dan), tied to asset ownership or cash backing, and intended for defensive rather than speculative purposes.
+
+This position represents a minority scholarly view, not mainstream consensus, and is the central point of intellectual honesty in the submission. See the Compliance Logic document for the full economic-equivalence argument, primary-source citations, and limitations.
 
 ### Architecture: Governance-First Gate Chain
 
@@ -78,16 +80,18 @@ Show the four-gate diagram:
 ---
 
 ### Slide 3: Shariah Methodology — Why These Structures Work
-**Headline:** "Asset-Backed Hedging: The Minority Position Explained"
+**Headline:** "Economic-Equivalence Argument: Asset-Backed Options as Islamic Contract Precedent"
 
 Three pillars:
-1. **Asset Backing** — Covered calls require shares you own; cash-secured puts require 100% cash collateral → eliminates the "abstract rights" objection
-2. **Hedging Doctrine** — IIFA permits hedging when aligned with Shariah objectives (property protection, risk management) → permits defensive structures
-3. **Contract Law Analogues** — Wa'd (promise), Urbun (earnest money), Khayar (conditional options) are established Islamic concepts → provide scholarly foundation
+1. **Asset Backing** — Covered calls require shares you own; cash-secured puts require 100% cash collateral → transforms the economic structure from a naked bet on price to a conditional right tied to real assets
+2. **Classical Islamic Precedent** — Khayar al-Shart (conditional options in Islamic contract law), Urbun (earnest money with conditional redemption), Wa'd/Wa'dan (mutual promises, used for FX forwards in Islamic banking) → established legal frameworks that modern option structures can map onto
+3. **Hedging Doctrine** — IIFA Resolution 224 permits hedging when aligned with Shariah objectives (property protection, risk management, Maqasid al-Shariah) → permits defensive structures without speculation
 
-**Key limitation:** This is a minority view. Mufti Usmani & IIFA 2019 say options are haram. We argue for a defensible exception under strict conditions.
+**Key limitation:** This is a minority view. Mufti Usmani & IIFA 2019 (Resolution 238) prohibit options outright. We argue that asset-backed, defensive structures are defensible under strict conditions, but this position requires Shariah Advisory Board review before production use.
 
-**Visual:** Three-pillar diagram + a callout box stating "Minority Position: Defended by logic, not yet by consensus"
+**Visual:** Three-pillar diagram + a callout box stating "Minority Position: Grounded in Islamic contract-law precedent and hedging doctrine, but not yet mainstream consensus"
+
+**Reference:** Full economic-equivalence argument and primary-source citations are in the Compliance Logic document.
 
 ---
 
@@ -95,10 +99,11 @@ Three pillars:
 **Headline:** "The Gate Chain Works: Real Alpaca Trade End-to-End"
 
 Show real evidence from live Alpaca account (0TCX):
-- Order placed (CVX, 1 share @ $203.92)
-- Gate decisions logged (Shariah PASS, structure PASS, account PASS, risk limits PASS)
-- Timestamp, market data, order ID
-- Settlement and reconciliation
+- Order bc939dcd-edfd-428f-9227-272d2521300f placed August 19, 2026 at 15:37:47 UTC
+- Symbol: CVX (Chevron), quantity 1, limit price $207.60
+- Filled at $206.89 (filled_avg_price), an improvement of $0.71
+- Gate decisions logged: Shariah PASS (SEC_EDGAR, debt 13.3%, cash 2.2%), structure PASS (equity), account PASS (CASH, no margin), risk limits PASS
+- Settlement and reconciliation: verified three independent ways (local ledger, broker's avg_entry_price, order's filled_avg_price)
 - Audit trail with citations
 
 **Key message:** This is not a simulation. The whole chain (preview → gate evaluation → approval → Alpaca submission → settlement → reconciliation) works against the real broker.
@@ -122,13 +127,15 @@ Show real evidence from live Alpaca account (0TCX):
 ### Slide 6: Limitations & Next Steps
 **Headline:** "What This Proof-of-Concept Does NOT Claim"
 
-- ❌ This is settled Islamic law (it isn't; mainstream disagrees)
-- ❌ A scholar has formally approved this (they haven't yet)
-- ❌ This is suitable for real-money production without review (requires Shariah Advisory Board)
-- ✅ This is a defensible research framework that lets code enforce what scholars argue about
-- ✅ This is a Governance-First demo of how compliance-as-a-product can work
+- ❌ This is settled Islamic law (it isn't; mainstream Islamic scholarship forbids options)
+- ❌ A scholar has formally approved this (UNREVIEWED; formal Shariah Advisory Board approval required before production)
+- ❌ This defends options as permissible across all structures (no; this project defends only asset-backed, defensive structures: covered calls, cash-secured puts, protective puts, collars)
+- ❌ This is suitable for real-money production without review (it is not; this is a research framework for a paper-trading proof-of-concept)
+- ✅ This is a defensible research framework grounded in Islamic contract law precedent and scholarly hedging doctrine
+- ✅ This is a Governance-First demo of how compliance-as-a-product can work when code enforcement is transparent and auditable
+- ✅ This proves that a gate chain can enforce compliance deterministically, with citations backing every decision
 
-**Visual:** Checklist with clear X's and checkmarks
+**Visual:** Checklist with clear X's and checkmarks; emphasize the UNREVIEWED status prominently
 
 ---
 
