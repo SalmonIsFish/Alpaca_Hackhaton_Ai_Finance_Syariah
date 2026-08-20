@@ -10,10 +10,19 @@ import json
 from alpaca_paper_adapter import ALPACA_ADAPTERS, check_alpaca_status
 from alpaca_paper_adapter import reconcile_paper_order as reconcile_alpaca_order
 from alpaca_paper_adapter import submit_paper_order as submit_alpaca_order
-from approval_queue import get_approval, record_broker_reconciliation, record_broker_submission, update_execution_status
+from approval_queue import (
+    get_approval,
+    record_broker_reconciliation,
+    record_broker_submission,
+    update_execution_status,
+)
 from config import load_settings
 from moomoo_status import check_moomoo_status
-from moomoo_paper_adapter import broker_submission_from_approval, reconcile_paper_order, submit_paper_order
+from moomoo_paper_adapter import (
+    broker_submission_from_approval,
+    reconcile_paper_order,
+    submit_paper_order,
+)
 from portfolio_store import open_position_quantity
 from trading_modes import mode_capabilities
 
@@ -31,7 +40,12 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             status="NOT_APPROVED",
             message="approval_status_must_be_APPROVED_PAPER_READY",
         )
-        return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": False}
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "broker_submission": False,
+        }
 
     if approval.get("broker_submission"):
         return {
@@ -40,7 +54,8 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             "queue_id": queue_id,
             "broker_submission": True,
             "execution_status": approval.get("execution_status"),
-            "execution_message": approval.get("execution_message") or "broker_submission_already_recorded",
+            "execution_message": approval.get("execution_message")
+            or "broker_submission_already_recorded",
             "executed_at": approval.get("executed_at"),
         }
 
@@ -82,7 +97,12 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             status="SHARIAH_GATE_FAILED",
             message="shariah_status_must_be_PASS",
         )
-        return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": False}
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "broker_submission": False,
+        }
 
     if approval.get("risk_status") != "PASS":
         result = update_execution_status(
@@ -91,7 +111,12 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             status="RISK_GATE_FAILED",
             message="risk_status_must_be_PASS",
         )
-        return {**result, "status": result["execution_status"], "queue_id": queue_id, "broker_submission": False}
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "broker_submission": False,
+        }
 
     audit_gate = validate_approval_payload_for_execution(approval)
     if audit_gate["status"] != "PASS":
@@ -124,7 +149,13 @@ def execute_paper_order(connection: sqlite3.Connection, queue_id: int) -> dict:
             status="BROKER_NOT_READY" if use_alpaca else "MOOMOO_NOT_READY",
             message=moomoo.get("reason") or moomoo.get("status", "moomoo_not_ready"),
         )
-        return {**result, "status": result["execution_status"], "queue_id": queue_id, "moomoo": moomoo, "broker_submission": False}
+        return {
+            **result,
+            "status": result["execution_status"],
+            "queue_id": queue_id,
+            "moomoo": moomoo,
+            "broker_submission": False,
+        }
 
     sell_gate = validate_sell_reduction(connection, approval, moomoo)
     if sell_gate["status"] != "PASS":
@@ -230,7 +261,9 @@ def validate_approval_payload_for_execution(approval: dict) -> dict:
     }
 
 
-def row_payload_consistency_errors(approval: dict, preview: dict, approval_payload: dict, quote: dict | None) -> list[str]:
+def row_payload_consistency_errors(
+    approval: dict, preview: dict, approval_payload: dict, quote: dict | None
+) -> list[str]:
     errors = []
     if normalize_text(preview.get("symbol")) != normalize_text(approval.get("symbol")):
         errors.append("payload.preview.symbol_mismatch")
@@ -244,7 +277,9 @@ def row_payload_consistency_errors(approval: dict, preview: dict, approval_paylo
         errors.append("payload.preview.notional_mismatch")
     if approval_payload.get("execution_environment") != approval.get("execution_environment"):
         errors.append("payload.approval.execution_environment_mismatch")
-    if isinstance(quote, dict) and normalize_text(quote.get("symbol")) != normalize_text(approval.get("symbol")):
+    if isinstance(quote, dict) and normalize_text(quote.get("symbol")) != normalize_text(
+        approval.get("symbol")
+    ):
         errors.append("payload.preview.quote_snapshot.symbol_mismatch")
     candidate = approval_payload.get("candidate")
     if isinstance(candidate, dict):
@@ -277,10 +312,23 @@ def validate_sell_reduction(connection: sqlite3.Connection, approval: dict, moom
     if side != "SELL":
         return {"status": "PASS", "side": side}
 
+    # A sell-to-open option (covered call, cash-secured put) has no local equity
+    # position by definition -- ownership/collateral is proven by
+    # option_structure_gate and account_shariah_gate at approval time, not by this
+    # equity-only ledger check. Checking this here would reject every legitimate
+    # option order that isn't coincidentally sitting on top of an equal or larger
+    # equity position in the same symbol.
+    preview = parse_payload(approval).get("preview")
+    asset_class = (preview or {}).get("asset_class", "equity")
+    if asset_class == "option":
+        return {"status": "PASS", "side": side, "asset_class": asset_class}
+
     symbol = str(approval.get("symbol") or "").upper()
     quantity = float(approval.get("quantity") or 0)
     account_suffix = moomoo.get("account_suffix")
-    available_quantity = open_position_quantity(connection, symbol=symbol, account_suffix=account_suffix)
+    available_quantity = open_position_quantity(
+        connection, symbol=symbol, account_suffix=account_suffix
+    )
     if quantity <= 0:
         return {
             "status": "REJECT",

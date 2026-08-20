@@ -1,0 +1,47 @@
+{
+  "what_this_shows": "The first real Level 1 option order to actually fill, end to end, against the real Alpaca paper API: preview -> approval -> a human typing EXECUTE PAPER -> broker fill -> reconcile -> ledger. This was the one remaining unproven step in the whole project -- submission, OCC symbology, and the confirmation gate were already proven live (queue 7, CVX, cancelled unfilled); a fill was not. It is now.",
+  "underlying": "AAPL",
+  "contract": "AAPL260828P00305000",
+  "strategy": "cash_secured_put",
+  "account_suffix": "0TCX",
+  "outcome": "FILLED",
+  "queue_id": 11,
+  "broker_order_id": "3f06c708-d8fa-4d3a-8823-e3a78f9b3053",
+  "fill": {
+    "side": "SELL",
+    "position_intent": "sell_to_open",
+    "contracts": 1.0,
+    "limit_price": 1.0,
+    "filled_avg_price": 1.02,
+    "notional": 102.0,
+    "contract_multiplier": 100,
+    "filled_at": "2026-08-20T17:41:06.470613705Z"
+  },
+  "shariah_trace": "AAPL: underlying=PASS (SEC_EDGAR). structure=cash_secured_put -> PASS (100% cash-collateralized purchase commitment (Arboun/Wa'd); no margin financing). account=CASH -> PASS (no standing riba exposure).",
+  "portfolio_sync": {
+    "status": "OPTION_FILL_RECORDED",
+    "position_updated": false,
+    "reason": "option fills are audited but not tracked in the equity position ledger -- CLAUDE.md known limitation #2, unchanged by this trade"
+  },
+  "real_bug_found_and_fixed_along_the_way": {
+    "summary": "validate_sell_reduction in paper_execution.py required a local equity position for *any* SELL, with no asset_class exemption -- the same equity-only-rule-applied-to-options bug shape already fixed twice elsewhere in this codebase (agent_coordinator's side/quant filters), just never hit here because the one prior live option order (CVX, queue 7) happened to sit on top of an existing 1-share CVX equity position and passed by coincidence.",
+    "queue_9": {
+      "status": "PORTFOLIO_SELL_GATE_FAILED",
+      "reason": "no local AAPL position is available for account 0TCX",
+      "note": "This queue_id exposed the bug: a genuine cash_secured_put sell-to-open on AAPL, an underlying with zero local equity position, was incorrectly rejected at execution time despite clearing every real gate (Shariah, option-structure, account, risk) at approval."
+    },
+    "fix": "validate_sell_reduction now reads asset_class from the staged preview payload and returns PASS immediately for asset_class == 'option', matching the reasoning already established for the other two option-aware exemptions: ownership/collateral for Level 1 structures is proven by option_structure_gate and account_shariah_gate at approval time, not by this equity-only ledger check. TDD: a test reproducing the zero-position option SELL was added to test_paper_execution_gates.py (placed before the existing seed_position() call specifically so it can't pass by the same coincidence that hid the bug in production), confirmed red before the fix, green after. Full 40-suite regression clean, ruff clean.",
+    "queue_10": {
+      "status": "BROKER_CANCELLED",
+      "reason": "stale limit price -- 1.05 was the bid at submission, but AAPL260828P00305000's bid moved to 1.00 within under two minutes, leaving the limit resting above the bid rather than marketable. Cancelled cleanly (filled_qty 0, no partial) and reconciled before retrying with a fresh quote. This is the exact same failure class 4a73e6b already documented for queue 7 (CVX), just on a much faster timescale -- worth noting for anyone re-running this: re-quote and submit as close together as possible."
+    }
+  },
+  "verification": {
+    "note": "Verified the same way the CVX equity fill was verified -- multiple independent readings agreeing, not a single green checkmark.",
+    "broker_reconciliation_order_status": "filled",
+    "broker_reconciliation_filled_qty": "1",
+    "broker_reconciliation_filled_avg_price": "1.02",
+    "local_portfolio_sync_fill_avg_price": 1.02,
+    "agreement": "broker's own order record and the locally-synced fill both read 1.02"
+  }
+}

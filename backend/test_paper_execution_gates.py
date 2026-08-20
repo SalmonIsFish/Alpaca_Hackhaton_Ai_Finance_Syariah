@@ -35,7 +35,15 @@ def make_connection() -> sqlite3.Connection:
     return connection
 
 
-def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS", risk_status: str = "PASS", side: str = "BUY", quantity: int = 1) -> int:
+def add_approval(
+    connection: sqlite3.Connection,
+    *,
+    shariah_status: str = "PASS",
+    risk_status: str = "PASS",
+    side: str = "BUY",
+    quantity: int = 1,
+    asset_class: str = "equity",
+) -> int:
     blockers = [] if shariah_status == "PASS" and risk_status == "PASS" else ["test_blocker"]
     preview = {
         "status": "READY_FOR_APPROVAL",
@@ -44,6 +52,7 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
         "symbol": "AAPL",
         "side": side,
         "quantity": quantity,
+        "asset_class": asset_class,
         "price": 333.74,
         "notional": round(quantity * 333.74, 2),
         "blockers": blockers,
@@ -79,18 +88,27 @@ def add_approval(connection: sqlite3.Connection, *, shariah_status: str = "PASS"
             "notional": round(quantity * 333.74, 2),
         },
     }
-    return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)["id"]
+    return record_approval(connection, preview=preview, approval=approval, approved_by_user=True)[
+        "id"
+    ]
 
 
 def mutate_payload(connection: sqlite3.Connection, queue_id: int, mutator) -> None:
-    row = connection.execute("SELECT payload FROM approval_queue WHERE id = ?", (queue_id,)).fetchone()
+    row = connection.execute(
+        "SELECT payload FROM approval_queue WHERE id = ?", (queue_id,)
+    ).fetchone()
     payload = json.loads(row["payload"])
     mutator(payload)
-    connection.execute("UPDATE approval_queue SET payload = ? WHERE id = ?", (json.dumps(payload, sort_keys=True), queue_id))
+    connection.execute(
+        "UPDATE approval_queue SET payload = ? WHERE id = ?",
+        (json.dumps(payload, sort_keys=True), queue_id),
+    )
     connection.commit()
 
 
-def seed_position(connection: sqlite3.Connection, *, quantity: float, account_suffix: str = "1234") -> None:
+def seed_position(
+    connection: sqlite3.Connection, *, quantity: float, account_suffix: str = "1234"
+) -> None:
     ensure_portfolio_tables(connection)
     apply_fill_to_position(
         connection,
@@ -104,14 +122,19 @@ def seed_position(connection: sqlite3.Connection, *, quantity: float, account_su
     connection.commit()
 
 
-def set_execution_env(*, trading_mode: str = "approval", enabled: bool = True, adapter: str = "disabled") -> None:
+def set_execution_env(
+    *, trading_mode: str = "approval", enabled: bool = True, adapter: str = "disabled"
+) -> None:
     os.environ["TRADING_MODE"] = trading_mode
     os.environ["PAPER_EXECUTION_ENABLED"] = "true" if enabled else "false"
     os.environ["PAPER_EXECUTION_ADAPTER"] = adapter
 
 
 def main() -> None:
-    original_env = {key: os.environ.get(key) for key in ["TRADING_MODE", "PAPER_EXECUTION_ENABLED", "PAPER_EXECUTION_ADAPTER"]}
+    original_env = {
+        key: os.environ.get(key)
+        for key in ["TRADING_MODE", "PAPER_EXECUTION_ENABLED", "PAPER_EXECUTION_ADAPTER"]
+    }
     original_moomoo_status = paper_execution.check_moomoo_status
     original_reconcile = paper_execution.reconcile_paper_order
     try:
@@ -156,31 +179,59 @@ def main() -> None:
 
         set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
         missing_quote_id = add_approval(connection)
-        mutate_payload(connection, missing_quote_id, lambda payload: payload["preview"].pop("quote_snapshot"))
+        mutate_payload(
+            connection, missing_quote_id, lambda payload: payload["preview"].pop("quote_snapshot")
+        )
         missing_quote_result = execute_paper_order(connection, missing_quote_id)
         assert missing_quote_result["status"] == "APPROVAL_AUDIT_FAILED"
-        assert "payload.preview.quote_snapshot_missing" in missing_quote_result["approval_audit"]["errors"]
+        assert (
+            "payload.preview.quote_snapshot_missing"
+            in missing_quote_result["approval_audit"]["errors"]
+        )
         assert missing_quote_result["broker_submission"] is False
 
         stale_blocker_id = add_approval(connection)
-        mutate_payload(connection, stale_blocker_id, lambda payload: payload["preview"].update({"blockers": ["portfolio_position_limit"]}))
+        mutate_payload(
+            connection,
+            stale_blocker_id,
+            lambda payload: payload["preview"].update({"blockers": ["portfolio_position_limit"]}),
+        )
         stale_blocker_result = execute_paper_order(connection, stale_blocker_id)
         assert stale_blocker_result["status"] == "APPROVAL_AUDIT_FAILED"
-        assert "payload.preview.blockers_must_be_empty" in stale_blocker_result["approval_audit"]["errors"]
+        assert (
+            "payload.preview.blockers_must_be_empty"
+            in stale_blocker_result["approval_audit"]["errors"]
+        )
         assert stale_blocker_result["broker_submission"] is False
 
         preview_symbol_mismatch_id = add_approval(connection)
-        mutate_payload(connection, preview_symbol_mismatch_id, lambda payload: payload["preview"].update({"symbol": "MSFT"}))
+        mutate_payload(
+            connection,
+            preview_symbol_mismatch_id,
+            lambda payload: payload["preview"].update({"symbol": "MSFT"}),
+        )
         preview_symbol_mismatch_result = execute_paper_order(connection, preview_symbol_mismatch_id)
         assert preview_symbol_mismatch_result["status"] == "APPROVAL_AUDIT_FAILED"
-        assert "payload.preview.symbol_mismatch" in preview_symbol_mismatch_result["approval_audit"]["errors"]
+        assert (
+            "payload.preview.symbol_mismatch"
+            in preview_symbol_mismatch_result["approval_audit"]["errors"]
+        )
         assert preview_symbol_mismatch_result["broker_submission"] is False
 
         candidate_quantity_mismatch_id = add_approval(connection)
-        mutate_payload(connection, candidate_quantity_mismatch_id, lambda payload: payload["approval"]["candidate"].update({"quantity": 99}))
-        candidate_quantity_mismatch_result = execute_paper_order(connection, candidate_quantity_mismatch_id)
+        mutate_payload(
+            connection,
+            candidate_quantity_mismatch_id,
+            lambda payload: payload["approval"]["candidate"].update({"quantity": 99}),
+        )
+        candidate_quantity_mismatch_result = execute_paper_order(
+            connection, candidate_quantity_mismatch_id
+        )
         assert candidate_quantity_mismatch_result["status"] == "APPROVAL_AUDIT_FAILED"
-        assert "payload.approval.candidate.quantity_mismatch" in candidate_quantity_mismatch_result["approval_audit"]["errors"]
+        assert (
+            "payload.approval.candidate.quantity_mismatch"
+            in candidate_quantity_mismatch_result["approval_audit"]["errors"]
+        )
         assert candidate_quantity_mismatch_result["broker_submission"] is False
 
         set_execution_env(trading_mode="approval", enabled=True, adapter="fake")
@@ -189,6 +240,22 @@ def main() -> None:
         assert sell_without_position_result["status"] == "PORTFOLIO_SELL_GATE_FAILED"
         assert sell_without_position_result["broker_submission"] is False
         assert sell_without_position_result["portfolio_gate"]["available_quantity"] == 0.0
+
+        # A sell-to-open option (covered call, cash-secured put) has no local equity
+        # position by definition -- it is secured by cash or already-owned shares
+        # proven by option_structure_gate/account_shariah_gate at approval time, not
+        # by this equity-only ledger check. Must run before seed_position below: an
+        # account that happens to already hold shares would let this pass by
+        # coincidence rather than by the asset_class exemption actually working --
+        # exactly how the real CVX option order masked this bug the first time.
+        option_sell_without_position_id = add_approval(
+            connection, side="SELL", asset_class="option"
+        )
+        option_sell_without_position_result = execute_paper_order(
+            connection, option_sell_without_position_id
+        )
+        assert option_sell_without_position_result["status"] != "PORTFOLIO_SELL_GATE_FAILED"
+        assert option_sell_without_position_result["broker_submission"] is True
 
         seed_position(connection, quantity=1.0)
         sell_exceeds_position_id = add_approval(connection, side="SELL", quantity=2)
@@ -208,7 +275,9 @@ def main() -> None:
         submitted_result = execute_paper_order(connection, submitted_id)
         assert submitted_result["status"] == "BROKER_SUBMITTED"
         assert submitted_result["broker_submission"] is True
-        assert submitted_result["broker_response"]["broker_order_id"] == f"FAKE-PAPER-{submitted_id}"
+        assert (
+            submitted_result["broker_response"]["broker_order_id"] == f"FAKE-PAPER-{submitted_id}"
+        )
 
         submitted_row = get_approval(connection, submitted_id)
         assert submitted_row["broker_submission"] is True
