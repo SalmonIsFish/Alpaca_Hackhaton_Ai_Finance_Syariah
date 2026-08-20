@@ -51,6 +51,7 @@ Approval         POST /paper/approval
 
 Execution        POST /paper/execute/{queue_id}   requires "EXECUTE PAPER"
                    paper_execution.py re-audits the stored payload, re-checks reduce-only SELL
+                   (equity only — a sell-to-open option is exempt; see Known limitations 4)
                    -> alpaca_paper_adapter.submit_paper_order(approval, broker)
 
 Reconcile        POST /paper/reconcile/{queue_id}
@@ -238,12 +239,18 @@ suite not run as part of the regular list above.
    run named explicitly, and the exact `/paper/preview` body to post next. A proposed contract
    has cleared **nothing** — `test_option_strategy_api.py` asserts a proposal can never read as
    approved, and `test_option_strategy.py` asserts a selected contract still has to clear the
-   whole gate chain. What remains unproven is live: no option order has been through the real
-   broker, only the mocked seam in `test_option_execution_smoke.py`.
-4. **The end-to-end chain has run against real Alpaca — once, on the test account.**
-   On 2026-08-19 a real order went preview → approval → `EXECUTE PAPER` → fill → reconcile →
+   whole gate chain. The two Level 1 structures are no longer equally proven: a **cash-secured
+   put has filled live** against the real broker (see 4 below), while the **covered call has
+   not** — it is still exercised only against the mocked seam in `test_option_execution_smoke.py`.
+   Nothing has yet written a call against real shares, and the test account cannot currently do
+   it: `option_strategy` sizes a covered call from owned shares at the standard 100-share
+   multiplier, and `0TCX` holds exactly 1 share of CVX.
+4. **The end-to-end chain has run against real Alpaca — twice, on the test account: once
+   equity, once option.** Both went preview → approval → `EXECUTE PAPER` → fill → reconcile →
    ledger against `https://paper-api.alpaca.markets` over the `alpaca_mcp` transport, with
-   nothing mocked. Order `bc939dcd-edfd-428f-9227-272d2521300f` (`client_order_id
+   nothing mocked.
+
+   **The equity fill — 2026-08-19.** Order `bc939dcd-edfd-428f-9227-272d2521300f` (`client_order_id
    amanah-queue-5`, queue 5) filled 1 CVX at **206.89** against a **207.60** limit and booked
    into `paper_positions` as `quantity 1.0, average_cost 206.89, cost_basis 206.89,
    realized_pnl 0.0, account_suffix 0TCX, account_type CASH`.
@@ -264,6 +271,37 @@ suite not run as part of the regular list above.
    | `docs/live-trade-evidence/after-CVX.json` | the first real broker submission after the account fix |
    | `docs/live-trade-evidence/reconciled-CVX.json` | the fill reconciled into the ledger, `outcome: VERIFIED`, `problems: []` |
 
+   **The option fill — 2026-08-20.** A Level 1 **cash-secured put** filled live. Order
+   `3f06c708-d8fa-4d3a-8823-e3a78f9b3053` (`client_order_id amanah-queue-11`, queue 11) sold to
+   open 1 contract of `AAPL260828P00305000` at **1.02** against a **1.00** limit — a sell-to-open
+   filling *above* its limit, which is the correct direction for a credit. It booked to
+   `paper_fills` under the OCC symbol and returned `OPTION_FILL_RECORDED`; `paper_positions` was
+   **not** touched, so limitation 2 above still holds after a real option fill rather than merely
+   in theory.
+
+   Verified the same way, by independent readings agreeing rather than one green checkmark: the
+   broker's order record (`filled_qty 1`, `filled_avg_price 1.02`), the broker's own position
+   (`AAPL260828P00305000`, side `short`, `qty -1`, `avg_entry_price 1.02`), the locally synced
+   fill row (`1.0 @ 1.02`), and settled cash moving 99793.10 → 99895.08 — the 102.00 credit less
+   0.02 in fees — all agree.
+
+   Getting there took three queue entries, and the two that failed are worth as much as the one
+   that filled:
+
+   | queue | outcome | what it shows |
+   |---|---|---|
+   | 9 | `PORTFOLIO_SELL_GATE_FAILED` | a real bug — see the fourth bug below |
+   | 10 | `BROKER_CANCELLED` | the stale-limit failure again, at speed: 1.05 was the bid at submission and the bid was 1.00 under two minutes later, so it rested instead of crossing. Cancelled with `filled_qty 0`, reconciled, re-quoted. **Re-quote and submit as close together as possible** — an option bid is perishable in a way an equity bid is not. |
+   | 11 | `BROKER_FILLED` | the fill above |
+
+   Option evidence trail, all committed:
+
+   | file | what it shows |
+   |---|---|
+   | `docs/live-trade-evidence/submitted-CVX-option.json` | the first option order to reach a broker at all — OCC symbology, `sell_to_open`, and the confirmation gate accepted, but *not* a fill |
+   | `docs/live-trade-evidence/canceled-CVX-option.json` | that order cancelled unfilled, and reconcile handling a terminal **non**-fill: `BROKER_CANCELLED`, `portfolio_sync: null`, nothing written to either table |
+   | `docs/live-trade-evidence/filled-AAPL-option.json` | the first real option fill, with the queue 9/10/11 sequence and the bug it exposed |
+
    **What this does not prove.** It ran on the *test* paper account (`0TCX`) from a *local*
    checkout. The submission demo trade still has to happen on the dedicated hackathon account
    once that is provisioned, and it should be run **against the deployed instance at
@@ -278,7 +316,8 @@ suite not run as part of the regular list above.
    covered call, an unsupported strategy, a margin account, and an under-collateralized
    cash-secured put, through the real FastAPI app with only the `alpaca_request` seam mocked.
    Writing it found and fixed **three** real bugs, all the same shape: an equity-only rule
-   applied to options. `agent_coordinator.evaluate_candidate`
+   applied to options — and a **fourth** of that shape turned up later in live execution, which
+   is recorded after them because it was found differently. `agent_coordinator.evaluate_candidate`
    unconditionally blocked any non-BUY side, which made both Level 1 strategies (both
    sell-to-open) unreachable from `/paper/preview` at all (fixed with an `asset_class` param);
    and the portfolio risk overlay treated an option's contracts/premium as equity
@@ -289,6 +328,26 @@ suite not run as part of the regular list above.
    for every order, so a fully-collateralized cash-secured put on a Shariah-PASS underlying was
    refused for `quant_no_buy_signal` alone (fixed on 2026-08-20 by scoping that filter to
    non-option orders — see below).
+
+   **A fourth of the same shape surfaced on 2026-08-20, and this one no test caught — a real
+   order did.** `paper_execution.validate_sell_reduction` required a local equity position for
+   *any* `SELL`, with no `asset_class` exemption. Every Level 1 structure is sell-to-open, so a
+   legitimate cash-secured put on an underlying the account holds no shares of was rejected at
+   execution time with `no local AAPL position is available` — after clearing the Shariah,
+   option-structure, account and risk gates at approval. The reduce-only rule is right for
+   equity and meaningless for a sell-to-open option, whose collateral is proven by
+   `option_structure_gate` and `account_shariah_gate` at approval time.
+
+   It survived the smoke suite *and* a real live order because of a coincidence: the first live
+   option order (CVX, queue 7) happened to sit on top of the 1-share CVX equity position left by
+   the equity trade, so the equity check passed for the wrong reason. It took a put on an
+   underlying with genuinely zero equity exposure to expose it. The regression test in
+   `test_paper_execution_gates.py` is therefore placed **before** the existing `seed_position()`
+   call, so it cannot pass by that same coincidence; it was confirmed red before the fix and
+   green after.
+
+   The lesson generalises past this one function: a live trade that passes proves less than it
+   appears to when incidental account state can satisfy a check the code never meant to apply.
 
    The quant agent decides whether to open a *directional long*. No Level 1 structure is one: a
    covered call is written against stock already owned, a cash-secured put means "willing to own
