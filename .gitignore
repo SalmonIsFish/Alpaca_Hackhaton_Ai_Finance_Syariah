@@ -32,3 +32,6 @@ desktop.ini
 
 # Reviewed previews staged by check_paper_order.py
 backend/staged_preview_*.json
+
+# Local Playwright MCP verification traces
+.playwright-mcp/

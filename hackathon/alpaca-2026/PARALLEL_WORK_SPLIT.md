@@ -6,46 +6,237 @@ previous two-terminal version of this doc — that split (`feature/shariah-optio
 so a fresh session in any of the three terminals has everything it needs without replaying prior
 conversation.
 
-## Why this split
+**2026-08-20 update:** the margin blocker below is resolved (see `NEXT_STEPS.md`), and one real
+equity trade (CVX) has run end to end against the real Alpaca paper API. This revision reflects
+the plan from a three-round council consult (`council_output_live_trade_and_next_steps.md`,
+`council_output_round3_synthesis.md`) on what to do with the ~8 days remaining before kickoff
+(Aug 28) — read the round-3 file for the reasoning; the summary is below. The task lists in this
+revision supersede the ones below them where they conflict; sections not mentioned in the
+2026-08-20 task lists (e.g. the original handoff contract, merge checkpoint) still apply.
 
-Per `NEXT_STEPS.md` (current as of 2026-08-19), the backend architecture — gate chain, Alpaca
-adapter, real SEC EDGAR screening, option strike selection — is built and tested, but **no
-trade has ever run end to end against the real broker**, the demo has no judge-facing
-justification UI, and the fiqh citations backing the options-structure gate are secondary
-summaries rather than primary sources. Three genuinely independent workstreams follow from that:
-backend needs to get a real trade working and expose new endpoints; frontend needs to build the
-UI those endpoints will feed; research needs to strengthen the citations and answer open
-questions neither of the other two should have to stop and chase down themselves.
+## ⏸ Live status snapshot — read this first if resuming a new session
 
-## ⚠ Blocks everything — resolve first
+Written 2026-08-20, afternoon session (Malaysia time), because the coordinating session's usage
+ran low mid-task and had to hand off. This is the actual state of all three terminals *right
+now* — more current than the task lists below, which describe the plan, not necessarily what's
+already landed. A fresh coordinating session should read this section first, then verify each
+item against the actual repo/branches before acting on it (branches may have moved since this was
+written).
 
-The current (test, non-hackathon) Alpaca paper account is `MARGIN`, and `account_shariah_gate`
-rejects margin accounts outright — **every** order, including plain equity, currently fails
-`margin_account_not_permitted`. This is `account_shariah_gate` working as designed, not a bug.
-Terminal 2's first task is resolving this (see below) — nothing that depends on a live trade can
-proceed until it's resolved. Do **not** relax the gate to unblock this.
+**Terminal 1 (frontend/demo) — nearly done, one decision pending:**
+- Deploy verified live and working: real Playwright click-through against the hosted URL
+  (`https://alpaca-hackhaton-ai-finance-syariah--adibluqman117.replit.app`) — AAPL preview, real
+  SEC_EDGAR COMPLIANT verdict, real `alpaca_iex` prices, Shariah Trace panel rendering from the
+  real `/explain` endpoint (not the fallback), Reject flow, all screenshotted as evidence.
+- Two real bugs found and fixed, both merged and live: the hidden `#optionStrike` input blocking
+  form submit on Equity orders, and a `DOMContentLoaded` race condition causing a red
+  "Disconnected" flash on first load (commit `d74e536`). Both confirmed fixed on the live URL by
+  the project owner directly.
+- Alpaca test-account (`0TCX`) keys are set as Replit Secrets and confirmed working (real IEX
+  data, not fixtures). `ALPACA_MODE`, `SEC_EDGAR_USER_AGENT` also set.
+- **Open, unresolved: SQLite does not persist across a Replit restart on the free/Autoscale
+  tier.** Terminal 1 researched fixes: Replit's Object Storage is not a mounted filesystem (would
+  need a real backend rewrite — out of scope, correctly declined); Replit's managed Postgres is
+  the DB migration explicitly ruled out earlier. **The only real fix is Reserved VM** ($15–50/mo
+  depending on spec; always-on, no idle-triggered restart, survives crashes — only an explicit
+  redeploy wipes it, which is avoidable by just not republishing near judging). A free mitigation
+  (GitHub Actions keep-alive ping, `/health` every 5 min) is implemented and active. A
+  marker-persistence verification test was in flight (~20 min out) when this was written — check
+  `docs/live-trade-evidence/` or ask Terminal 1 for the result. **Decision pending: does the
+  project owner want to pay for Reserved VM for the final week, or rely on the free keep-alive
+  alone?** My (the coordinating session's) recommendation, given a $5,000 prize pool and a hard
+  "live demo URL" submission requirement: pay for it, as belt-and-braces on top of the keep-alive,
+  once the verification result is in — but this is genuinely the project owner's call, not mine.
+- Also queued, not yet started: known issue "SEC EDGAR returns `http_403` on the deployed
+  instance specifically" (checked — not a User-Agent problem, `sec_edgar_screen.py` already sets
+  one; almost certainly SEC blocking Replit's shared egress IP). Assigned to Terminal 2, not yet
+  picked up as of this writing.
 
-Note: the hackathon's own dedicated paper account (created once the event starts) may or may not
-have this problem — but the current test account does, and Terminal 2 should get a real trade
-working now against whatever CASH account is available, rather than waiting for the event key.
+**Terminal 2 (backend) — merged into `master`; one human step outstanding:**
+- Margin fix, first equity trade (CVX, 206.89 fill), `/explain`, `/option-strategy`, duplicate
+  screening-path removal: all done (see main `NEXT_STEPS.md`).
+- Minimal EDGAR cache shim: done (`backend/sec_edgar_cache.py`), explicitly labeled temporary,
+  4 mutations caught, throttled to ~8 req/s.
+- `provision_cash_account.py` defect found and fixed: a `float(None or 0)` silently zeroed the
+  multiplier field on an absent/unparseable value, meaning a fresh-account run could report
+  success while leaving a 4x account at 4x. Fixed to fail closed, now has its first test.
+- **The `quant_no_buy_signal` systemic flaw** — **fixed and confirmed** (commit `c138a77`).
+  The filter is now scoped to non-option orders; no gate was touched. Verified live on
+  2026-08-20 at 10:12 ET: an AAPL cash-secured put previews `READY_FOR_APPROVAL` with quant
+  reporting `NO_SIGNAL`, while a plain equity BUY on the same name is still blocked.
+- **Queue 7 is resolved: it never filled, and has been cancelled and reconciled.** Checked
+  read-only at 10:01 ET — status `new`, `filled_qty 0`, resting since 09:30:02 ET. Root cause
+  confirmed with a live quote rather than inferred: the limit of 0.13 was the previous
+  session's bid, and at 10:02 ET the contract quoted bid 0.07 / ask 0.17 / mid 0.12, so a
+  sell-to-open at 0.13 sat above the bid and was never marketable. Exactly the failure
+  `4a73e6b` already warns about, so no new fix was needed. Cancelled at 14:04:52Z with no
+  partial fill, then reconciled — which exercised a path the CVX equity fill could not: a
+  terminal **non**-fill. `lifecycle_status` mapped `canceled` to `BROKER_CANCELLED`,
+  `portfolio_sync` came back `null`, and neither `paper_positions` nor `paper_fills` was
+  written. Evidence: `docs/live-trade-evidence/canceled-CVX-option.json`.
+- **Replacement order is staged as queue 8, and is waiting on the project owner.**
+  `AAPL260826P00305000`, sell-to-open 1 contract, limit 0.69 at the live bid, 3.7% OTM, 6 DTE,
+  premium 0.69/share. All three gates PASS (underlying SEC_EDGAR, structure cash_secured_put,
+  account CASH). It has reached **no broker**. Submitting it requires the project owner to type
+  `EXECUTE PAPER` personally — that confirmation does not carry over from queue 7.
+  Note the 6 DTE expiry (2026-08-26) resolves before kickoff, leaving clean account state.
+
+  **Run it from the `.worktrees/live-trade-backend` worktree, not from `master`:**
+
+  ```powershell
+  cd .worktrees\live-trade-backend
+  ..\..\.venv\Scripts\python.exe backend\execute_paper_order.py 8
+  ```
+
+  `backend/*.db` is gitignored, so **every worktree has its own separate database**, and
+  merging the branch did not move any of this state. Queue 8 exists only in the
+  live-trade-backend worktree's `paper_trading.db`, alongside the queue-5 CVX position and the
+  queue-7 record. In `master`'s own database, id 8 is an unrelated `0001` REJECT left over from
+  the test suite — executing there would act on the wrong row. **Do not delete the
+  `live-trade-backend` worktree** just because the branch is merged; the only copy of the live
+  trade ledger is in it. This is the same worktree-local-database trap CLAUDE.md's
+  known-limitation 4 already flags for the deployed-instance demo trade.
+
+  **Re-price it before executing.** The 0.69 limit was the bid at 10:13 ET; by 10:20 ET the
+  bid had already drifted to 0.68, which leaves the limit a cent *above* the bid and therefore
+  non-marketable — queue 7's exact failure in miniature, just on a seven-minute timescale
+  instead of overnight. An option bid moves continuously, so treat any staged limit as
+  perishable. Re-run the preview and approval immediately before executing so the limit is the
+  live bid at that moment:
+
+  ```powershell
+  ..\..\.venv\Scripts\python.exe backend\check_paper_order.py AAPL --option cash_secured_put --contracts 1
+  ..\..\.venv\Scripts\python.exe backendpprove_paper_order.py AAPL
+  ..\..\.venv\Scripts\python.exe backend\execute_paper_order.py <new queue id>
+  ```
+
+  That produces a fresh queue id; execute that one and leave queue 8 unexecuted, exactly as
+  queue 6 was left. Market closes 16:00 ET / 20:00Z.
+- CVX had **no eligible contract at all** on 2026-08-20 — 46 rejected as outside the 2–7% OTM
+  band — so the replacement moved to AAPL. The band was deliberately **not** widened to
+  manufacture a trade.
+- `feature/live-trade-backend` is **merged into `master`** (merge commit `41d694d`), after the
+  full local suite passed 40/40 on the merged result. Ruff is clean on every file the branch
+  touched; the pre-existing `E402`/`F401` findings in `test_local_api_smoke.py` and
+  `test_moomoo.py` were left alone per CLAUDE.md.
+- `provision_cash_account.py` re-verified for kickoff: dry run against `0TCX` reports
+  `max_margin_multiplier=1 no_shorting=True`, `type=CASH`, "nothing to change". The script is
+  dry-run by default (`--apply` required to write) and one-directional. Its test covers the
+  kickoff case directly — a fresh 4x account produces the right patch, a rerun is a no-op, and
+  an absent/null/unparseable multiplier fails closed rather than silently leaving 4x at 4x.
+
+**Terminal 3 (research) — done, one optional low-priority item left:**
+- `compliance-logic.md`, `social-posts-draft.md`, `citation-strengthening-memo.md`: all written,
+  committed on `research/hackathon-notes` (commit `b76543d`), and verified — both quoted passages
+  checked against primary sources (one confirmed accurate, one corrected to real wording), weak
+  Scribd/Course Hero citations swapped for better ones. Confirmed `margin-account-policy.md` and
+  `submission-copy-draft.md` already state the options position as unreviewed.
+- Follow-up task assigned (update `demo-video-script-draft.md` and `submission-copy-draft.md`
+  with the real CVX fill data and, if it exists by then, the option-order result) — **status
+  unconfirmed, not yet reported back as of this writing.**
+- Optional, low-priority, only if time allows: apply the citation upgrades identified in
+  `citation-strengthening-memo.md`'s checklist to `fiqh-primary-sources.md` itself (the memo only
+  identifies opportunities, doesn't apply them).
+
+**Immediate next steps for whoever resumes:**
+1. **Queue 7 is done** (cancelled unfilled, reconciled, documented). The open item is now
+   queue 8: the project owner must type `EXECUTE PAPER` for
+   `backend\execute_paper_order.py 8` before the 2026-08-26 expiry — ideally the same day it
+   was priced, since its limit is a live-quote bid that goes stale overnight exactly as queue
+   7's did. If it is no longer the same session, re-run the preview rather than executing a
+   stale queue 8.
+2. Get the Reserved VM decision from the project owner and act on it.
+3. Chase the two unconfirmed reports above (Terminal 2's quant-signal fix, Terminal 3's asset
+   updates).
+4. Everything else in the task lists below should be re-verified against current branch state
+   before assuming it's still accurate — this snapshot will go stale fast.
+
+## Why this split, and why this sequencing
+
+The key fact driving the current sequencing: judging requires a **brand-new dedicated Alpaca
+paper account** created at/around kickoff (Aug 27–28) — the current test account (`0TCX`) is
+disqualifying if reused for judging. That means nothing that requires the *real* competition
+account can happen yet, but everything else — proving the live option order, proving the hosting
+deploy path, drafting compliance/outreach/social content — can and should happen now, in
+parallel, against the test account or as standalone documents, then get re-pointed/re-run against
+the competition account once it exists. See `council_output_round3_synthesis.md` for the full
+reasoning and the two AI models' agreement on this point.
+
+## Converged plan (2026-08-20 → Aug 26, on the test account `0TCX`)
+
+1. **Terminal 2**: get one live option order (covered call or cash-secured put) through the full
+   real chain, on a high-liquidity underlying, confirming an actual `filled` status — this is the
+   single hardest remaining technical unknown and needs the most debug runway. Treat it strictly
+   as a debugging proxy for the competition-account run, not the real thing — labeled test mode,
+   documented stop/pause criteria if it reveals a systemic flaw.
+2. **Terminal 1**: stand up the Replit deployment against the test account, purely to prove
+   deploy mechanics (auth, static dashboard serving, SQLite persistence across a restart) —
+   decoupled from which Alpaca account is wired to it.
+3. **Terminal 3**: draft the "Compliance Logic" doc (economic-equivalence argument for why a
+   covered call / cash-secured put isn't Gharar/Maysir) now, not contingent on a scholar
+   replying; draft scholar-outreach material and build-in-public social post copy; keep
+   strengthening fiqh citations toward primary sources.
+4. **Terminal 2** (secondary): minimal flat-file/TTL EDGAR cache, explicitly scoped as
+   *temporary* — sized only to survive SEC rate limits during repeated demo-recording takes, not
+   the full SQLite screening-store design from `NEXT_STEPS.md`. That fuller design is deferred
+   past submission.
+
+**Aug 27–28 (kickoff):** create the competition account, rerun `provision_cash_account.py`
+against it, re-point the already-proven Replit deployment at the new credentials.
+
+**Aug 28 → Sep 4:** re-run the now-debugged equity and option trades against the competition
+account through the deployed instance (a local-only trade is invisible to any deployment), record
+the demo video only once a real option fill exists, finalize slides/social posts, submit.
 
 ## Terminal 1 (Sonnet) — Frontend / demo
 
 Worktree: `.worktrees/shariah-trace-ui`, branch `feature/shariah-trace-ui`.
 
-Owns:
-- `dashboard/index.html` and its JS only.
-- **Shariah Trace panel** — a dashboard view showing, per trade: verdict → which rule fired →
-  the fiqh basis with citation. This is the judge-facing artifact both council models (see
-  `council_output_current_progress.md`) flagged as the single highest-leverage piece for the
-  Creativity & Originality and Presentation & Execution judging criteria. Consumes whatever
-  `GET /stock/{symbol}/explain`-shaped endpoint Terminal 2 exposes — do not invent the endpoint
-  shape unilaterally, coordinate on the contract (see Handoff contract below).
-- **Clear the stale Moomoo-era position** — `4.0 AAPL @ 323.3487`, account suffix `1740`, in
-  `backend/paper_trading.db`. It predates the Alpaca account and will pollute exposure math in
-  any demo screenshot or video.
-- **Demo hosting** — get a stub of the dashboard deployed to Streamlit, Replit, or Vercel now
-  (submission requires one of these). Prove the deploy path early rather than on the last day.
+**Already done, do not redo:** the stale Moomoo-era AAPL position is cleared (backup at
+`backend/paper_trading.db.bak-stale-aapl-cleanup`); `GET /stock/{symbol}/explain` shipped from
+Terminal 2. Verify the Shariah Trace panel actually renders from that real endpoint rather than
+the client-side fallback it was originally built against (`council_output_post_merge.md` flagged
+a shape mismatch there) — fix it if it's still on the fallback.
+
+**Findings from the first pass (2026-08-20, confirmed live):** the Replit deployment already
+existed (`https://alpaca-hackhaton-ai-finance-syariah--adibluqman117.replit.app`, connected to
+this GitHub repo) — no need to stand up a new one. A real bug was found and fixed: the "Run
+Agents" button silently no-opped on Equity orders because a hidden `#optionStrike` input
+(`min="0.01"`, default `0.00`) blocked HTML5 form submission even though it wasn't visible; fixed
+by disabling the field when hidden (`dashboard/index.html`, +6 lines), verified against the live
+deployed API, pushed to `feature/shariah-trace-ui` but not yet merged. The Shariah Trace panel
+was confirmed working from the real `/explain` endpoint (not the fallback — that concern is
+resolved) and fails closed correctly. Two real risks surfaced, addressed below. `ALPACA_API_KEY_ID`/
+`ALPACA_SECRET_KEY` are not yet set as Replit Secrets — the project owner adds those directly,
+not any terminal.
+
+Owns now (2026-08-20), next pass:
+1. **Merge `feature/shariah-trace-ui` into `master` and redeploy.** Run the local test suite
+   first per the merge-checkpoint convention below, even though this diff is frontend-only.
+2. **SQLite does not persist across a Replit restart** — confirmed directly (wrote a marker,
+   paused/resumed, marker gone). This matters more than "time the trade close to the deadline"
+   sounds like it fixes: the final trade was already going to land Aug 28→Sep 4, but a judge may
+   open the live URL hours or days after that, and if the free-tier container has gone idle and
+   restarted in between, the position silently vanishes — a worse failure than almost anything
+   else on the list, since "live demo URL" is a hard submission requirement. Before accepting
+   that as a timing risk to manage, spend ~15 minutes checking whether Replit offers persistent
+   storage short of a full Reserved VM (many platforms do, even on lighter tiers) — given the
+   hackathon's prize pool, a modest paid tier is very likely worth it if that's what's needed.
+   Report back cost/feasibility rather than deciding unilaterally, since it may cost money. If a
+   persistence fix is available and cheap, add it. Either way, add a simple keep-alive ping
+   (a scheduled request to the live URL every few minutes during the final days) as cheap
+   defense-in-depth against idle-based sleep, independent of whether the storage question
+   resolves cleanly. Do **not** migrate off SQLite to an external database (e.g. Postgres) to
+   solve this — that's backend code Terminal 2 owns, and real engineering risk this close to the
+   deadline for a problem that almost certainly has a cheaper infra-level fix.
+3. **SEC EDGAR returns `http_403` on this deployment specifically** (works fine locally, per
+   `NEXT_STEPS.md`). Checked: `sec_edgar_screen.py` already sets a descriptive default
+   `User-Agent`, so this is not a header problem — almost certainly SEC blocking Replit's
+   shared/rotating egress IP range. This is queued as a known issue for Terminal 2 (it owns
+   `sec_edgar_screen.py`), not blocking Terminal 1's work — flag it, don't fix it here.
+- Once redeployed, load the live Replit URL itself and click through preview → the Shariah Trace
+  panel, not just localhost — a mismatch that only shows up on the hosted build is worse to find
+  on Sep 3 than now.
 
 Does **not** touch: `backend/local_api.py`, any gate module, or `option_strategy.py`.
 
@@ -53,28 +244,30 @@ Does **not** touch: `backend/local_api.py`, any gate module, or `option_strategy
 
 Worktree: `.worktrees/live-trade-backend`, branch `feature/live-trade-backend`.
 
-Owns:
-- **Resolve the margin blocker** (above) — verify via `check_config.py` / `check_alpaca_status`
-  whether a CASH paper account is available; provision one if Alpaca supports it. If it does
-  not, this needs a documented, scholar-reviewable policy decision about how the system should
-  treat a paper margin account — not a code change that weakens `account_shariah_gate`.
-- **Get one real trade through end to end** via the `alpaca_mcp` transport — any Shariah-PASS
-  symbol, one share (or one Level 1 option leg), full preview → approve → `EXECUTE PAPER` →
-  fill → reconcile chain, against the real Alpaca paper API. This is the single most important
-  task across all three terminals — `NEXT_STEPS.md` calls it the largest unquantified risk, and
-  both council models independently flagged it as the actual thing standing between this project
-  and a working submission.
-- **Expose `option_strategy.py` over HTTP** and build `GET /stock/{symbol}/explain` — the
-  backend half of Terminal 1's trace panel. Coordinate the response shape with Terminal 1 before
-  building it out fully (see Handoff contract).
-- **Screening store** — SEC EDGAR raw-response cache + a `shariah_screens` table (append-only),
-  plus a request throttle on `sec_request` (SEC's own guidance: max ~10 req/s). Design is already
-  sketched in `NEXT_STEPS.md` under "Next session — time-varying compliance"; the three open
-  questions listed there (purification-tracking scope, re-screen trigger, cache TTL) should be
-  answered before building, not deferred further.
-- Delete or reroute `backend/us_strategy.py`'s direct `zoya_compliance` import — it is a second,
-  parallel screening path to a different provider, which the "one screening record, two views"
-  constraint in `NEXT_STEPS.md` explicitly forbids.
+**Already done, do not redo:** the margin blocker is resolved (`provision_cash_account.py`
+applied, `account_shariah_gate` verified passing on the CASH-equivalent posture); one real equity
+trade (CVX) ran end to end against the real Alpaca paper API; `GET /stock/{symbol}/explain` and
+`GET /stock/{symbol}/option-strategy` both shipped; the `us_strategy.py` duplicate `zoya_compliance`
+path is removed (`test_single_screening_path.py` enforces this with a static AST check now).
+
+Owns now (2026-08-20), in this order:
+1. **Get one real Level 1 option order (covered call or cash-secured put) through the full live
+   chain** — preview → approve → `EXECUTE PAPER` → fill → reconcile — against the test account
+   (`0TCX`), on a high-liquidity underlying (e.g. SPY, AAPL). Confirm an actual `filled` status,
+   not just a successful submission — Alpaca's paper options book can be thin and an unfilled
+   order will look broken on camera later. This is the single hardest remaining technical
+   unknown (option symbology, live-chain strike/liquidity selection, MCP quirks) and the item
+   most likely to reveal a design problem, so it goes first. Treat it as a debugging proxy for
+   the eventual competition-account run, not the real thing — keep it in a clearly labeled test
+   mode, and write down explicit stop/pause criteria if it surfaces a systemic flaw.
+2. **Minimal EDGAR cache — explicitly scoped as temporary.** A flat-file/TTL disk cache for
+   `sec_edgar_screen` responses, sized only to survive SEC's own ~10 req/s guidance during
+   repeated demo-recording takes — not the full append-only `shariah_screens` SQLite design
+   from `NEXT_STEPS.md`. Label it in code/comments as a temporary shim to be replaced post-
+   submission; do not let it grow into the full design under time pressure.
+3. Have `provision_cash_account.py` ready and tested so it can be rerun immediately against the
+   brand-new competition account at kickoff (Aug 27–28) — it is one-directional by design and
+   already proven once; just confirm it still runs clean against a fresh account.
 
 Does **not** touch: `dashboard/index.html`/JS, or anything under `hackathon/alpaca-2026/` docs.
 
@@ -83,27 +276,62 @@ Does **not** touch: `dashboard/index.html`/JS, or anything under `hackathon/alpa
 Worktree: `.worktrees/hackathon-research`, branch `research/hackathon-notes`. Produces reference
 documents only — never edits `backend/` or `dashboard/`.
 
-Owns:
-- **Upgrade the fiqh citations from secondary to primary sources.** The options-structure
-  allow-list in `SHARIAH_GATE_NOTES.md` currently cites a sister project's paraphrase of Usmani
-  and Visser, not primary AAOIFI standard text or directly-quoted scholarly opinion. Both
-  council models named this as the top risk to the compliance narrative — find and cite the
-  primary sources (or the closest verifiable equivalent) for each of: covered call, cash-secured
-  put, protective put, collar.
-- **Alpaca account research feeding Terminal 2's blocker** — does Alpaca offer a CASH paper
-  trading account distinct from MARGIN, and how is one provisioned/selected at account creation?
-  This unblocks Terminal 2 fastest if answered quickly.
-- **Submission logistics** — re-verify the lablab.ai Hackathon Rule Book and event page (last
-  fetched 2026-08-18) for any changes, and confirm the exact technical constraints of Streamlit /
-  Replit / Vercel hosting for a FastAPI + static-dashboard app, to inform Terminal 1's hosting
-  work.
+**Already done, do not redo:** initial fiqh primary-source research
+(`research/fiqh-primary-sources.md`), the Alpaca cash-account research that fed Terminal 2's now-
+resolved margin blocker (`research/alpaca-cash-account.md`), and the submission-logistics doc
+(`research/submission-logistics.md`) all exist. This round found: **no primary Islamic source
+(not AAOIFI, not Usmani, not IIFA's 2019 resolution) specifically permits any of the four allowed
+option structures** — the project rests on a genuine minority position. That finding is what
+drives the new top task below.
+
+Decisions from the 2026-08-20 planning discussion (answers to Terminal 3's own clarifying
+questions before starting):
+
+- **`compliance-logic.md` audience: adversarial, not sympathetic.** Write for a scholar/judge who
+  currently believes options are haram and needs to be walked through why this specific
+  implementation differs. Steelman the "options are Gharar/Maysir, full stop" objection first,
+  then answer it — don't write for a reader already inclined to agree. Structure: a short
+  plain-language summary up front (~300–500 words, judge-skimmable), then the steelmanned
+  objection, then the two structure-specific arguments with primary sourcing (AAOIFI, IIFA
+  resolutions, Sami Al-Suwailem, classical contract law — Khayar al-Shart and also check **Wa'd**,
+  the unilateral-promise framing the project's original pitch leaned on), then an explicit "what
+  this does not claim" limitations section, then full citations.
+- **Scholar outreach — not Terminal 3's task.** The project owner has a personal contact (an
+  ustaz) and will reach out directly, outside these terminals, if time allows. **Do not draft a
+  scholar-outreach-draft.md or identify institutional contacts.** Instead, make sure
+  `docs/shariah-policy/margin-account-policy.md` and the submission copy plainly state the
+  options-structure position is **unreviewed** if no review happens in time — see
+  `NEXT_STEPS.md` next-step #4, which already allows this as a valid outcome. Don't let silence
+  on this read as an oversight; state it.
+- **Social posts — split into two, don't combine the hook and the fiqh-risk disclosure.** Post 1
+  (now): the real CVX fill as a pure technical-achievement hook ("first Shariah-compliant trade
+  via MCP, no margin, no interest, full SEC-level screening — options are next") — no
+  minority-position caveat, since options haven't traded live yet and a caveat about a risk that
+  doesn't apply to what's being celebrated just muddies it. Post 2 (later, once
+  `compliance-logic.md` exists and ideally after the live option trade lands): a dedicated post on
+  the methodology itself, transparently framed as an explored minority position — this is the
+  differentiator content and deserves its own spotlight, not a buried disclaimer in the
+  celebration post.
+
+Owns now (2026-08-20):
+1. **`compliance-logic.md`** — per the audience/structure decision above.
+2. **`social-posts-draft.md`** — both posts, per the split decision above. Draft only; a human
+   posts it, since social engagement scoring rewards posting *early*, not late.
+3. Keep strengthening fiqh citations from secondary summaries toward primary sources in parallel,
+   as time allows — the original task, now secondary to the compliance-logic doc.
 
 Output location: new files under `hackathon/alpaca-2026/research/` (e.g.
-`fiqh-primary-sources.md`, `alpaca-cash-account.md`, `submission-logistics.md`) — do not edit
-`SHARIAH_GATE_NOTES.md` directly; Terminal 2 or a later session incorporates findings into it
-after review.
+`compliance-logic.md`, `social-posts-draft.md`) — do not edit `SHARIAH_GATE_NOTES.md` directly;
+Terminal 2 or a later session incorporates findings into it after review.
 
 ## Handoff contract (the one place terminals meet)
+
+**Historical — the endpoint below already shipped**, kept for the contract-first convention it
+demonstrates. The new Terminal 1/Terminal 2 interface for 2026-08-20 is the Replit deployment
+itself: Terminal 1 owns getting it live, Terminal 2's job is only to make sure `local_api.py`
+still reads config the same way in that environment (no code changes expected, but don't
+assume — if Terminal 1 reports a deploy-only failure, it's diagnosed together, not silently
+patched around on either side).
 
 Terminal 1 and Terminal 2 meet at exactly one interface: the `GET /stock/{symbol}/explain`
 response shape (verdict, rule fired, fiqh basis, citation) that Terminal 2 builds and Terminal 1
@@ -126,35 +354,41 @@ concrete about which plugin, for which situation, so "I could look that up" turn
 looking it up.
 
 **Terminal 1 (frontend):**
-- **`playwright` MCP — use this, not a claim.** Multiple reports this session said "tested in a
-  real browser" or "verified in a real browser" without the manager being able to check it
-  independently. Playwright can actually navigate the dashboard, click through the Shariah Trace
-  panel, screenshot it, and read the console for errors — do that and report what it actually
-  showed, not what you expect it would show.
+- **`playwright` MCP — use this on the live Replit URL specifically, not just localhost.** The
+  2026-08-20 task is proving the *hosted* deploy works, so the thing worth screenshotting and
+  console-checking is the actual `*.replit.app`/`*.replit.dev` URL after a deploy, ideally after
+  forcing a container restart to check SQLite persistence — not the dev server. Multiple reports
+  last session said "tested in a real browser" without independent verification; don't repeat
+  that, show what it actually rendered.
 - **`frontend-design` skill** — load it before any real visual/UX decision on the dashboard (the
   trace panel, the portfolio charts), not just for layout code.
 - **`astral` (ruff)** — applies automatically via the PostToolUse hook now; no action needed, but
   `/ruff` is available for an explicit full-file pass if wanted.
 
 **Terminal 2 (backend):**
-- **`context7` MCP — use this before trusting memory on an API's behavior.** The quant-agent bug
-  this session (silently reading Tiingo instead of the configured provider) and the margin-account
-  confusion both trace back to assuming how an API behaves rather than checking. Before writing
-  code against Alpaca's REST API, the MCP server's tool surface, or FastAPI internals, pull current
-  docs with `context7` rather than relying on training-data recall.
-- **`superpowers:systematic-debugging`** — load it at the start of any real bug hunt, not partway
-  through. It formalizes the same approach that already found the quant-agent and margin bugs;
-  use it deliberately instead of arriving at it by accident.
+- **`context7` MCP — use this before trusting memory on an API's behavior, especially now.** The
+  live option order is exactly the kind of task that produced the quant-agent and margin-account
+  bugs last session (assuming API behavior instead of checking). Before writing code against
+  Alpaca's option endpoints, OCC symbology, or the `alpaca_mcp` tool surface, pull current docs
+  with `context7` rather than relying on training-data recall — option symbol construction is a
+  likely place to get something subtly wrong.
+- **`superpowers:systematic-debugging`** — load it explicitly at the start of the option-order
+  work, not partway through after something fails. This task is expected to need real debugging
+  (liquidity, fills, MCP quirks); use the skill deliberately rather than arriving at it by
+  accident.
 - **`superpowers:test-driven-development`** — matches this repo's own convention (write the test,
-  mutation-check it, then implement) already documented in `CLAUDE.md`.
+  mutation-check it, then implement) already documented in `CLAUDE.md`; applies to the EDGAR
+  cache work too.
 - **`pyright-lsp` + `astral` (ruff)** — automatic now; a red squiggle or hook-caught lint issue is
   worth reading, not clicking past.
 - **`security-guidance` skill** — load it before touching anything credential- or
-  account-provisioning-adjacent (`provision_cash_account.py`-style scripts, `.env` handling).
+  account-provisioning-adjacent (`provision_cash_account.py`-style scripts, `.env` handling,
+  re-running the provisioning script against the future competition account).
 
-**Terminal 3 (research):** mostly not applicable — this role's actual tools (`WebFetch`,
-`WebSearch`) are already being used correctly and were what caught the AAOIFI/IIFA citation
-errors. `context7` doesn't apply (no code library docs involved in fiqh research).
+**Terminal 3 (research):** `WebFetch`/`WebSearch` for both the compliance-logic doc (finding
+primary AAOIFI/IIFA/SAC text to ground the economic-equivalence argument, not just paraphrase it)
+and for identifying realistically reachable scholar-outreach contacts. `context7` doesn't apply
+(no code library docs involved in fiqh research).
 
 **Manager / coordinator (next session in this role):**
 - **`code-review` skill** — use it for structured review of what a terminal reports, instead of

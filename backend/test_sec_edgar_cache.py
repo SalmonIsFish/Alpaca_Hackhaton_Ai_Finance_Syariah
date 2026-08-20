@@ -75,6 +75,48 @@ def main() -> None:
         assert again["ok"] is False, again
         assert list(cache_dir.glob("*.json")) == [], "nothing should be written for a failure"
 
+    # --------------------------------- a live failure falls back to a stale entry
+    # An intermittent 403 (SEC blocking a shared egress IP, a rate limit, ...) is
+    # an answer about SEC's mood, not about the company. If we already have a real
+    # prior answer on disk, serving it -- clearly marked stale -- beats failing the
+    # whole screen closed and showing a judge an ERROR for a company we screened
+    # successfully an hour ago.
+    with tempfile.TemporaryDirectory() as raw:
+        cache_dir = Path(raw)
+        fetch, calls = counter(OK)
+        sec_edgar_cache.cached_fetch(URL, fetch, cache_dir=cache_dir, ttl_seconds=3600)
+        assert len(calls) == 1, calls
+
+        # The entry is now older than a very short TTL, so the next call is a
+        # live attempt -- which fails.
+        fetch, calls = counter(NOT_FOUND)
+        stale = sec_edgar_cache.cached_fetch(
+            URL, fetch, cache_dir=cache_dir, ttl_seconds=0.0001, now=_later
+        )
+        assert len(calls) == 1, "an expired entry must still attempt a live fetch first"
+        assert stale["ok"] is True, stale
+        assert stale["data"] == {"hello": "world"}, stale
+        assert stale["cache"] == "stale", stale
+        assert stale["stale_age_hours"] > 0, stale
+        assert stale["live_fetch_reason"] == "http_404", stale
+
+        # Serving the stale entry must not touch it on disk -- its cached_at
+        # stays the original write time, and no failure is written either.
+        entry_files = list(cache_dir.glob("*.json"))
+        assert len(entry_files) == 1, entry_files
+
+    # ---------------------- a failure with nothing on disk still fails closed
+    # No prior answer exists to fall back to, so this must behave exactly as
+    # before: the raw failure, untouched.
+    with tempfile.TemporaryDirectory() as raw:
+        cache_dir = Path(raw)
+        fetch, calls = counter(NOT_FOUND)
+        no_fallback = sec_edgar_cache.cached_fetch(
+            URL, fetch, cache_dir=cache_dir, ttl_seconds=3600
+        )
+        assert no_fallback["ok"] is False, no_fallback
+        assert no_fallback["cache"] == "miss", no_fallback
+
     # --------------------------------------------------- ttl_seconds=0 disables
     with tempfile.TemporaryDirectory() as raw:
         cache_dir = Path(raw)

@@ -113,6 +113,24 @@ def cached_fetch(
     # Only a successful response is durable enough to reuse; see the module docstring.
     if response.get("ok"):
         _write_entry(path, url=url, response=response, cached_at=now())
+        return {**response, "cache": "miss"}
+
+    # The live fetch failed. If ``entry`` is set here it is necessarily expired
+    # (a fresh one would have returned above), but it is still a real prior
+    # answer from SEC -- serving it, clearly marked stale, beats failing the
+    # whole screen closed over what is often a transient block (rate limit,
+    # shared egress IP) rather than a fact about the company. Never rewritten:
+    # its cached_at must keep reporting genuine staleness.
+    if entry is not None:
+        return {
+            "ok": True,
+            "status_code": entry.get("status_code", 200),
+            "data": entry["data"],
+            "cache": "stale",
+            "cached_at": entry["cached_at"],
+            "stale_age_hours": (now() - entry["cached_at"]) / 3600.0,
+            "live_fetch_reason": response.get("reason"),
+        }
     return {**response, "cache": "miss"}
 
 
