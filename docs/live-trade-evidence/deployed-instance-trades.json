@@ -1,0 +1,37 @@
+{
+  "what_this_shows": "Both the equity and option demo trades re-run directly against the deployed instance (https://amanahtrader.uk), not a local checkout, so the deployment's own database captures them the way a judge opening the live URL would actually see -- closing the gap CLAUDE.md's known limitation 4 flagged: a locally-run trade is invisible to any deployment because backend/*.db is gitignored per checkout.",
+  "deployed_instance": "https://amanahtrader.uk",
+  "host": "self-managed DigitalOcean VPS (Ubuntu 24.04, nginx, systemd, real Let's Encrypt TLS) -- Replit is retired",
+  "account_suffix": "0TCX",
+  "trades": [
+    {
+      "queue_id": 2,
+      "type": "equity",
+      "symbol": "CVX",
+      "side": "BUY",
+      "quantity": 1,
+      "limit_price": 207.14,
+      "broker_order_id": "fd158edf-0347-4081-9e90-b7095cc4c51d",
+      "filled_avg_price": 207.12,
+      "outcome": "FILLED",
+      "position_updated": true,
+      "note": "First attempt failed BROKER_SUBMISSION with MCP_CLIENT_UNAVAILABLE -- the local .env's ALPACA_MCP_COMMAND override was a Windows-specific absolute path (E:\\Github2\\...\\uvx.exe) copied verbatim to the VPS via scp. Fixed by removing the override on the VPS so it falls back to the portable default (`uvx alpaca-mcp-server`, resolved via PATH). Retried on the same queue_id since nothing had reached the broker yet; second attempt filled cleanly."
+    },
+    {
+      "queue_id": 3,
+      "type": "option",
+      "strategy": "cash_secured_put",
+      "symbol": "AAPL260826P00302500",
+      "side": "SELL",
+      "position_intent": "sell_to_open",
+      "quantity": 1,
+      "limit_price": 0.48,
+      "broker_order_id": "849d377a-66fe-4675-95b1-b7e4bdfd3f58",
+      "filled_avg_price": 0.48,
+      "outcome": "FILLED",
+      "position_updated": false,
+      "note": "Rested at the live bid for roughly 2.5 minutes before crossing -- thinner liquidity than the equity leg, but well inside the 20:00Z expiry window. option fill correctly recorded in paper_fills only, per known limitation 2 (option positions are not tracked in the equity ledger)."
+    }
+  ],
+  "verified_via": "GET https://amanahtrader.uk/portfolio returning both fills (fill_count: 2) and the CVX position, independent of the reconcile responses recorded above"
+}
