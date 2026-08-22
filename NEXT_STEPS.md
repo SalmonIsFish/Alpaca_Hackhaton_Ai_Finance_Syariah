@@ -231,20 +231,44 @@ write the ledger. `/paper/preview`, `/paper/approval` and `POST /watchlist` stay
 rate-limited, deliberately, so judges keep an interactive demo; none of them can reach Alpaca,
 and the gate chain already refuses non-compliant orders.
 
-Blocked on one fact: the SSH login user. The key `~/.ssh/amanahtrader_vps` (ed25519) is
-accepted by the server at the probe stage but rejected for `root`. Password auth is already
-disabled server-side — only `publickey` is offered — which is the one piece of good news.
+**The host audit ran on 2026-08-22** — SSH was resolved (user `amanah`, not `root`) — and the
+full results are recorded in `docs/deployment/VPS_RUNBOOK.md`, which also captures the systemd
+unit, the nginx vhost, the deploy procedure and the kickoff credential sequence. The VPS now
+has a committed record; it previously existed only on the box.
 
-Also unverified until SSH works, and all part of the same review: `.env` file permissions on
-the box, whether Alpaca keys appear in shell history or journald, the systemd `ExecStart` bind
-address, `ufw` rules, certbot renewal automation, and unattended-upgrades. Note also that
-`deployed-instance-trades.json` records the local `backend/.env` being `scp`'d to the VPS
-verbatim, so one credential set is shared between a Windows dev box and a public server; the
-kickoff account should get its own VPS-only key pair rather than a copy.
+What the audit found sound, and therefore does **not** need fixing: `PasswordAuthentication no`,
+`PermitRootLogin no`, pubkey-only; `ufw` active, default-deny, only 22/80/443 open; uvicorn bound
+to `127.0.0.1` with nothing else listening publicly; `backend/.env` at `0600 amanah:amanah`;
+unattended-upgrades enabled; `certbot.timer` enabled with the cert valid 88 days. **The secret
+scan came back clean** — zero matches for Alpaca, Tiingo or Zoya credentials in shell history,
+in `/root/.bash_history`, in journald, or in the nginx logs, and zero strings of Alpaca key
+shape anywhere in the journal. Nothing needs rotating.
 
-There is no committed record of the VPS at all — no systemd unit, no nginx vhost, no deploy
-script, no runbook. `docs/deployment/VPS_RUNBOOK.md` should capture all of it once the audit
-above can actually run.
+What it found that the plan did not anticipate:
+
+- **`fail2ban` is not installed, against 11,348 failed SSH auth attempts in seven days.** None
+  can succeed, since password auth is off, so this is noise rather than exposure — but it is
+  free to stop.
+- **nginx proxies every request to uvicorn, including junk.** Of 261,092 requests logged in one
+  day from 1,079 unique IPs, **260,957 were 404s** and only 101 were 200s; real traffic was 61
+  dashboard loads. Every scanner request costs a Python round-trip and ~89 MB/day of log.
+- **The box is actively probed for exactly this project's secrets** — repeated requests for
+  `/secrets.yml`, `/secrets.json` and `/.streamlit/secrets.toml`. They found nothing, but
+  "nobody will look" is not available as a defence.
+- **Nothing has ever hit `/paper/execute`, `/paper/reconcile` or `POST /audit`** — zero requests
+  across the whole log. The exposure is real and has not been exercised.
+- **`amanah` has passwordless sudo and also runs the app**, so an RCE in the app is root.
+  Accepted for a hackathon deployment, recorded so the trade-off is deliberate.
+
+The hardened vhost is written and **syntax-validated against the box** (`nginx -t` on a staged
+copy in `/tmp`, live config untouched and verified unchanged by checksum afterwards). It lives at
+`docs/deployment/nginx/amanahtrader.uk.conf`. One correction it makes to the plan: `/audit` is
+both a `GET` the dashboard depends on and a `POST` that writes the ledger, so the operator-key
+check there is scoped by method rather than by path, or the hardening would break the demo.
+
+Applying it, installing `fail2ban`, and generating the operator key are the remaining host-side
+steps. They mutate a live box currently serving the demo, so they wait for the project owner's
+go-ahead.
 
 **1. Screening is live, but every call is uncached and unthrottled.**
 `agents/shariah_agent.py` routes the US path to `sec_edgar_screen.check_us_symbol`, reporting
