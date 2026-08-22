@@ -151,6 +151,38 @@ written).
 4. Everything else in the task lists below should be re-verified against current branch state
    before assuming it's still accurate — this snapshot will go stale fast.
 
+### 2026-08-22 update — supersedes the 2026-08-20 snapshot above where they conflict
+
+- **SSH into the VPS is resolved.** User is `amanah`, key `~/.ssh/amanahtrader_vps`, confirmed
+  working directly: `ssh -i ~/.ssh/amanahtrader_vps amanah@159.65.220.83`. Root is intentionally
+  locked at the OS account level (a password reset does not enable it — that's expected, not a
+  problem to fix). This was Terminal 2's item-1 blocker; item 1.1's host audit can proceed now.
+  Routine `apt update && apt upgrade` (not `dist-upgrade`, no reboot) was run manually by the
+  project owner directly on the box — if a kernel update / restart-required flag showed up, it
+  was left pending rather than rebooted, so check for that before assuming it's fully current.
+- **Terminal 1's dashboard redesign is committed, not merged.** `3b220e9` on `dashboard-redesign`
+  (fast-forwarded onto master first, so it includes everything through `86333f6`): ink-navy/brass
+  theme, sidebar nav, serif/mono/sans type system, and a new officer-desk component (Quant
+  Manager / Shariah Compliance Officer / Risk Manager / Trader) — full desk on Agent Summary and
+  replayed in Execution Audit, compact pill on Investment Committee, nothing added to
+  Ticket/Orders/Portfolio. Verified live via Playwright against a real `local_api` instance (not
+  mocked), light mode checked too. Every pre-existing element id/class was independently diffed
+  and confirmed intact. Not yet merged to master — pending the project owner's sequencing call
+  against whatever Terminal 2 lands next.
+- **Two submission-stage docs exist and are committed correctly now, not floating on master.**
+  `SOCIAL_POSTING_CADENCE.md` and `SUBMISSION_PACKAGE_ASSEMBLY.md` were originally written
+  untracked directly on `master` (outside the assigned worktree, at real risk of being lost to a
+  `git clean`) and have since been moved and committed at `fcdd473` on `research/hackathon-notes`
+  in `.worktrees/hackathon-research`. Per the cadence doc: Post 1's window was Aug 20-22
+  (closing/closed), Post 2 (methodology) opened Aug 22 — both are drafts only, actually posting
+  is a project-owner action no terminal can do.
+- **Terminal 2's items 2-4 (screening audit log, provisioning kickoff check, risk-adjusted
+  return metrics) and the CORS fix: status not yet reported back as of this writing.** Re-verify
+  against `feature/live-trade-backend`'s actual state before assuming any of it landed.
+- **A "Usage discipline" section was added** (below, under Tooling) after a `/usage` review
+  showed `superpowers:brainstorming` and long unscoped sessions as the two biggest cost drivers
+  across terminals — read it if a session's usage is running high.
+
 ## Why this split, and why this sequencing
 
 The key fact driving the current sequencing: judging requires a **brand-new dedicated Alpaca
@@ -400,6 +432,52 @@ and for identifying realistically reachable scholar-outreach contacts. `context7
 - **`superpowers:verification-before-completion`** — matches the standing rule already in effect
   this session (verify before accepting any terminal's claim as done); load it explicitly rather
   than reinventing the same discipline each time.
+
+## Usage discipline — keep every terminal cheap
+
+Added 2026-08-22, after a `/usage` review on the coordinator session showed
+`superpowers:brainstorming` (plus the subagents it spawned) accounting for roughly half of one
+session's cost, and 59% of that session's spend coming from turns run above 150k tokens of
+context. None of this means work less carefully — it means spend the same care with fewer
+wasted tokens. Check `/usage` before starting a long task if the session bar is already high;
+the 5-hour session window is the tighter, faster-moving constraint most of the time, the weekly
+one usually has more headroom.
+
+**All terminals:**
+- Reserve `superpowers:brainstorming` for decisions with real ambiguity — new structure, unclear
+  scope, a genuine design fork. For a bounded change with an obvious approach, state the plan in
+  2-3 sentences and get a yes; don't run the full skill ceremony for something describable in one
+  message.
+- Don't spawn a subagent/fork for anything 1-2 direct tool calls (Read/Grep/Bash) can answer.
+  Reserve forking for genuinely large, independent research that would otherwise flood the main
+  session with tool output not worth keeping.
+- Keep a session scoped to one topic. `/clear` when moving to a new, unrelated task rather than
+  letting one session accumulate several in a row — long context is disproportionately expensive
+  even with prompt caching.
+- `/compact` mid-task on a long single-topic session to keep the *next* turns cheap. It does not
+  refund tokens already spent, so it's a forward-looking move, not a way to lower what a usage
+  meter already shows — don't compact expecting the bar to drop.
+- Don't cut real verification to save usage. Browser/Playwright checks on UI changes, re-running
+  the test suite, independently confirming another terminal's claim before accepting it, `context7`
+  lookups before trusting API behavior — these are the legitimate cost of this project's own
+  standards (CLAUDE.md's testing rule, the verify-before-accepting coordination pattern that has
+  already caught real problems this week). The waste to cut is ceremony and redundant exploration,
+  not verification.
+
+**Per role:**
+- **Terminal 1 (frontend):** the required Playwright browser verification on real UI changes is
+  legitimate spend — keep it. Don't re-run `frontend-design`/`figma-design-to-code` on a decision
+  that's already locked; only invoke them for a genuinely new open design question.
+- **Terminal 2 (backend):** `context7` lookups before trusting an API's behavior are legitimate
+  spend — this is literally how the quant-agent and margin-account bugs were caught. Don't cut
+  those.
+- **Terminal 3 (research):** keep `WebFetch`/`WebSearch` scoped to the specific claim being
+  checked rather than broad exploratory searches.
+- **Manager/coordinator:** independent verification (`git status`/`diff`, re-reading a file) before
+  accepting a terminal's report is cheap and should stay. Re-running a full brainstorming pass on
+  a decision a worker terminal will independently re-derive anyway when it actually builds the
+  thing is the real waste to cut — coordinate and decide, don't re-explore what another terminal
+  is already exploring.
 
 ## Merge checkpoint
 
