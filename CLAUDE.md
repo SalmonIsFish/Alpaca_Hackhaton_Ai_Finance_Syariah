@@ -67,7 +67,8 @@ Reconcile        POST /paper/reconcile/{queue_id}
 | Compliance data | `sec_edgar_screen.py` (self-built SC screen), `zoya_compliance.py` (sandbox only) |
 | Strategy | `option_strategy.py` — proposes a contract; approves nothing |
 | Orchestration | `local_api.py`, `paper_execution.py`, `approval_workflow.py`, `agent_coordinator.py` |
-| State | `approval_queue.py`, `portfolio_store.py`, `watchlist_store.py` |
+| State | `approval_queue.py`, `portfolio_store.py`, `watchlist_store.py`, `shariah_screen_store.py` |
+| Reporting | `portfolio_metrics.py` — risk-adjusted return from the broker equity curve; reports, never decides |
 | Legacy | `moomoo_*.py` — superseded by Alpaca, retained for history. Do not extend. |
 
 **`shariah_candidate.build_shariah_candidate()` is the only surface a broker adapter talks to.**
@@ -159,6 +160,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_option_structure_agent.py
 .\.venv\Scripts\python.exe backend\test_option_structure_gate.py
 .\.venv\Scripts\python.exe backend\test_paper_execution_gates.py
+.\.venv\Scripts\python.exe backend\test_portfolio_metrics.py
 .\.venv\Scripts\python.exe backend\test_portfolio_risk_limits.py
 .\.venv\Scripts\python.exe backend\test_portfolio_snapshot_history.py
 .\.venv\Scripts\python.exe backend\test_provision_cash_account.py
@@ -171,6 +173,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_sec_edgar_screen.py
 .\.venv\Scripts\python.exe backend\test_shariah_candidate.py
 .\.venv\Scripts\python.exe backend\test_shariah_explain.py
+.\.venv\Scripts\python.exe backend\test_shariah_screen_store.py
 .\.venv\Scripts\python.exe backend\test_shariah_trace.py
 .\.venv\Scripts\python.exe backend\test_single_screening_path.py
 .\.venv\Scripts\python.exe backend\test_stock_profile.py
@@ -179,7 +182,7 @@ individually:
 .\.venv\Scripts\python.exe backend\test_watchlist_store.py
 ```
 
-All 40 of those pass. There are 41 `test_*.py` files on disk; `test_moomoo.py` is the one
+All 42 of those pass. There are 43 `test_*.py` files on disk; `test_moomoo.py` is the one
 excluded, for the reason below. `check_moomoo_status()` pre-checks TCP reachability before
 touching the moomoo
 SDK, so a closed OpenD port fails in ~1.5s instead of the SDK's own multi-minute retry/backoff —
@@ -218,9 +221,17 @@ suite not run as part of the regular list above.
    ~8 req/s, under SEC's 10 req/s guidance. Measured: three symbols cold 4.53 s, warm 0.66 s
    with no SEC request at all. It caches raw responses only, never verdicts, and never caches
    a failure — a 404 is a fact about SEC, not about the company, and the screen fails closed
-   on ERROR. The append-only `shariah_screens` store in NEXT_STEPS.md still replaces it; delete
-   the shim then. Tests are unaffected — they supply a `shariah_override` or swap the
+   on ERROR. Tests are unaffected — they supply a `shariah_override` or swap the
    `sec_request` seam, and none reach SEC or the cache.
+
+   **Every verdict is now logged.** `check_us_symbol` is a thin wrapper over
+   `_screen_us_symbol` that appends the verdict to the append-only `shariah_screens` table
+   (`shariah_screen_store.py`), readable at `GET /shariah/screens`. That is the *verdict* half
+   of the two-layer store in NEXT_STEPS.md; `sec_edgar_cache.py` remains the raw-response half
+   and is **not** replaced by it. The log is observability, not a gate: `_record_screen` is a
+   swappable seam and a failed write is swallowed, because a locked SQLite file must never turn
+   a COMPLIANT company into an ERROR. Malaysia is structurally excluded — the hook sits in the
+   US screen, and `_evaluate_malaysia` does not pass through it.
 2. **Option fills are audited but not tracked as positions.** `portfolio_store` models whole
    shares only — no contract multiplier, strike, expiry, or assignment. `sync_filled_order`
    diverts option fills to `paper_fills` under the OCC symbol and returns

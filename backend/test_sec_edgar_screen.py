@@ -8,6 +8,8 @@ Assertions target the *decision and its evidence*, not just the status string --
 which concepts a ratio was built from, and which balance-sheet date it came from.
 """
 
+import sqlite3
+
 import sec_edgar_screen
 
 
@@ -35,10 +37,18 @@ def facts(**concepts):
     return {"facts": {"us-gaap": concepts}}
 
 
+# Every verdict check_us_symbol recorded during the current install(), so the
+# audit-log write can be asserted without the suite ever opening the real
+# paper_trading.db.
+RECORDED = []
+
+
 def install(responses, missing_ok=False):
     """Point the seam at a canned {url: payload} map and reset the CIK cache."""
     sec_edgar_screen.reset_ticker_cache()
     calls = []
+    RECORDED.clear()
+    sec_edgar_screen._record_screen = RECORDED.append
 
     def fake_request(url):
         calls.append(url)
@@ -67,10 +77,12 @@ TICKERS_URL = sec_edgar_screen.SEC_TICKERS_URL
 
 def main() -> None:
     real_request = sec_edgar_screen.sec_request
+    real_record = sec_edgar_screen._record_screen
     try:
         run_all()
     finally:
         sec_edgar_screen.sec_request = real_request
+        sec_edgar_screen._record_screen = real_record
         sec_edgar_screen.reset_ticker_cache()
 
 
@@ -389,6 +401,23 @@ def run_all() -> None:
         assert result["status"] in {"COMPLIANT", "NON_COMPLIANT", "UNKNOWN", "ERROR"}, result
         if result["status"] != "COMPLIANT":
             assert result.get("reason"), result
+
+    # Every screen that produces a verdict must also log it -- one screen in,
+    # one audit row out, whichever of the six exits it took.
+    install(clean)
+    logged = sec_edgar_screen.check_us_symbol("AAPL")
+    assert RECORDED == [logged], RECORDED
+    assert RECORDED[0]["status"] == "COMPLIANT", RECORDED
+
+    # A failing log write is not allowed to cost us the verdict. This is the one
+    # place in the repo where swallowing an exception is correct: the audit log
+    # observes decisions, it does not make them.
+    def explode(_verdict):
+        raise sqlite3.OperationalError("database is locked")
+
+    install(clean)
+    sec_edgar_screen._record_screen = explode
+    assert sec_edgar_screen.check_us_symbol("AAPL")["status"] == "COMPLIANT"
 
     print("PASS: sec_edgar_screen applies the SC two-tier screen and fails closed on missing data.")
 

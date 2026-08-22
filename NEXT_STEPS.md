@@ -57,6 +57,30 @@ immediately.
 
 ## What works
 
+**Risk-adjusted return reporting** *(2026-08-22)*
+
+`backend/portfolio_metrics.py` computes Sortino, Sharpe, max drawdown and cumulative return
+from the account's real Alpaca equity curve (`GET /v2/account/portfolio/history`), through
+`alpaca_market_data.alpaca_data_request` — the seam that already takes query params and already
+points at `paper-api`. `--json` emits a machine-readable block for the pitch narrative.
+
+Two choices worth keeping straight. **The risk-free rate is 0 by design**: a conventional
+Sharpe divides excess return over a T-bill rate, and embedding an interest rate in the
+performance metric of a system built to exclude Riba would contradict the thing it enforces.
+Dropping the term makes the numbers conservative, not flattering. **Sortino leads** because the
+pitch is capital preservation and lower tail risk, and Sharpe penalises upside variance equally.
+
+It also refuses to flatter a thin window. Under 2 daily returns it reports
+`INSUFFICIENT_HISTORY` rather than a ratio; under 20 it attaches a warning to the output. First
+real run (2026-08-22) had **4 daily returns** and printed an annualized Sortino of −7.99 — a
+number that is arithmetic, not evidence, which is exactly why the observation count is printed
+above it. Do not quote the ratio without the count.
+
+**Provisioning is kickoff-ready** *(re-verified 2026-08-22, against master's post-`86333f6`
+version)*. `test_provision_cash_account.py` passes, and a dry run against `0TCX` reports
+`type=CASH`, `max_margin_multiplier=1`, `no_shorting=True`, "nothing to change" — with
+`backend/.env` sha256-identical before and after, so the dry-run path provably writes nothing.
+
 **End-to-end live trade — proven once** *(2026-08-19, test account `0TCX`)*
 
 A real order went preview → approval → `EXECUTE PAPER` → fill → reconcile → ledger against
@@ -172,6 +196,79 @@ broker for a stated fiqh reason, which is the project's whole thesis in one arte
 - `.env` has never been committed; `backend/.env.example` documents every variable
 
 ## What is broken or missing
+
+**0. URGENT — the deployed instance at https://amanahtrader.uk has no authentication.**
+Verified live on 2026-08-21 by probing the deployment, not inferred from the code:
+
+| check | result |
+|---|---|
+| `GET /health`, `/system/mode`, `/paper/status`, `/approvals`, `/audit` | all `200`, no auth |
+| `GET /approvals` | 44 KB of real queue data, publicly readable |
+| `GET /docs`, `/redoc`, `/openapi.json` | all `200` — the write surface is advertised |
+| CORS | `access-control-allow-origin: *` |
+| `/system/mode` | `paper_execution_enabled: true`, adapter `alpaca_mcp` |
+| security headers | none — no HSTS, X-Frame-Options, X-Content-Type-Options, CSP |
+| `Server:` | `nginx/1.24.0 (Ubuntu)` — version disclosed |
+| ports 8000/8080/3000/5432/6379/27017 direct to the IP | all refused — nginx is the only surface |
+| `http://` → `https://` | correct `301` |
+| credential strings in public payloads | none found |
+
+So `POST /paper/execute/{queue_id}` is reachable by anonymous callers. Its only gate is the
+phrase `EXECUTE PAPER`, which is hardcoded in `local_api.py`, published in this open-source
+repo, and echoed back in the rejection payload. It is a typo-guard, not a credential, and it
+was never meant to be one — the deployment simply inherited a design written for
+`--host 127.0.0.1`. `deployed-instance-trades.json` records two real fills placed through this
+instance, so the path is live rather than theoretical, and the account exposed is the one whose
+P&L gets judged.
+
+**Half fixed as of 2026-08-22.** The code-side change is in: CORS is no longer `*` but reads
+`ALLOWED_ORIGINS` (`config.allowed_origins()`), defaulting to a local-development set and
+narrowed to the real origin on the VPS. **The host-side work is not done** and needs SSH:
+`server_tokens off`, security headers, `404` on `/docs` `/redoc` `/openapi.json`, nginx rate
+limiting, and an operator-key header required on `POST /paper/execute/{id}`,
+`POST /paper/reconcile/{id}` and `POST /audit` — the three routes that reach the broker or
+write the ledger. `/paper/preview`, `/paper/approval` and `POST /watchlist` stay open but
+rate-limited, deliberately, so judges keep an interactive demo; none of them can reach Alpaca,
+and the gate chain already refuses non-compliant orders.
+
+**The host audit ran on 2026-08-22** — SSH was resolved (user `amanah`, not `root`) — and the
+full results are recorded in `docs/deployment/VPS_RUNBOOK.md`, which also captures the systemd
+unit, the nginx vhost, the deploy procedure and the kickoff credential sequence. The VPS now
+has a committed record; it previously existed only on the box.
+
+What the audit found sound, and therefore does **not** need fixing: `PasswordAuthentication no`,
+`PermitRootLogin no`, pubkey-only; `ufw` active, default-deny, only 22/80/443 open; uvicorn bound
+to `127.0.0.1` with nothing else listening publicly; `backend/.env` at `0600 amanah:amanah`;
+unattended-upgrades enabled; `certbot.timer` enabled with the cert valid 88 days. **The secret
+scan came back clean** — zero matches for Alpaca, Tiingo or Zoya credentials in shell history,
+in `/root/.bash_history`, in journald, or in the nginx logs, and zero strings of Alpaca key
+shape anywhere in the journal. Nothing needs rotating.
+
+What it found that the plan did not anticipate:
+
+- **`fail2ban` is not installed, against 11,348 failed SSH auth attempts in seven days.** None
+  can succeed, since password auth is off, so this is noise rather than exposure — but it is
+  free to stop.
+- **nginx proxies every request to uvicorn, including junk.** Of 261,092 requests logged in one
+  day from 1,079 unique IPs, **260,957 were 404s** and only 101 were 200s; real traffic was 61
+  dashboard loads. Every scanner request costs a Python round-trip and ~89 MB/day of log.
+- **The box is actively probed for exactly this project's secrets** — repeated requests for
+  `/secrets.yml`, `/secrets.json` and `/.streamlit/secrets.toml`. They found nothing, but
+  "nobody will look" is not available as a defence.
+- **Nothing has ever hit `/paper/execute`, `/paper/reconcile` or `POST /audit`** — zero requests
+  across the whole log. The exposure is real and has not been exercised.
+- **`amanah` has passwordless sudo and also runs the app**, so an RCE in the app is root.
+  Accepted for a hackathon deployment, recorded so the trade-off is deliberate.
+
+The hardened vhost is written and **syntax-validated against the box** (`nginx -t` on a staged
+copy in `/tmp`, live config untouched and verified unchanged by checksum afterwards). It lives at
+`docs/deployment/nginx/amanahtrader.uk.conf`. One correction it makes to the plan: `/audit` is
+both a `GET` the dashboard depends on and a `POST` that writes the ledger, so the operator-key
+check there is scoped by method rather than by path, or the hardening would break the demo.
+
+Applying it, installing `fail2ban`, and generating the operator key are the remaining host-side
+steps. They mutate a live box currently serving the demo, so they wait for the project owner's
+go-ahead.
 
 **1. Screening is live, but every call is uncached and unthrottled.**
 `agents/shariah_agent.py` routes the US path to `sec_edgar_screen.check_us_symbol`, reporting
@@ -377,10 +474,27 @@ against the strategy endpoint, 2 against the single-screening-path check, all ca
 
 ## Next steps, in order
 
-1. **Build the screening store.** Approach A above: an EDGAR raw-response cache keyed by CIK,
-   an append-only `shariah_screens` table, and a throttle on `sec_request`. Answer the three
-   open questions first (purification scope, re-screen trigger, cache TTL). This is the largest
-   genuinely open backend item, and every call to `/explain` currently pays for its absence.
+1. **Screening store — the lean half is built (2026-08-22); finish it after submission.**
+   All three layers of Approach A now exist in some form: the EDGAR raw-response cache
+   (`sec_edgar_cache.py`, still labelled a temporary shim), the `sec_request` throttle inside
+   it, and now the append-only `shariah_screens` table (`shariah_screen_store.py`), which
+   records every US verdict with its deciding ratios and the previous verdict for the same
+   symbol. `GET /shariah/screens?symbol=&limit=` reads it back.
+
+   What was deliberately left out, on the council's advice that seven days did not fit it:
+   dividend **purification tracking** and the **time-varying traffic light**. Of the three open
+   questions above, only cache TTL was answered (24 h, in the shim). The **re-screen trigger**
+   is still unanswered — nothing sweeps on a schedule, so a row appears only when something
+   screens a symbol, and the *effective date* semantics (the date SC would have reclassified vs
+   the date we noticed) remain undecided. `previous_status` and the `changed` flag are in the
+   table specifically so that decision has the data waiting for it.
+
+   The hook lives in `check_us_symbol`, which is now a thin wrapper over `_screen_us_symbol` —
+   so all six exits log through one call site, and `/paper/preview`, `/stock/{s}/profile` and
+   `/explain` are all covered without any of them knowing. `_record_screen` is a swappable seam
+   and a failed write is swallowed: the log observes decisions, it must never make one.
+   Malaysia is structurally out of scope; the hook is in the US screen only.
+
 2. **Run the submission demo trade on the dedicated hackathon account, through the deployed
    instance at https://amanahtrader.uk.** Not locally — see broken/missing #5. Provision the account, confirm
    `check_alpaca_status` reports `CASH` (apply `provision_cash_account.py` if it does not), then

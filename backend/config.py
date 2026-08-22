@@ -58,6 +58,28 @@ class Settings:
     max_orders_per_day: int
 
 
+# Origins the API answers cross-origin requests from. The deployed instance serves
+# the dashboard from its own origin, so it needs none of these -- it sets
+# ALLOWED_ORIGINS to just itself. The default is the local-development set: "null"
+# is what a browser sends for a dashboard/index.html opened straight off disk via
+# file://, and the rest are the usual local static servers.
+DEFAULT_ALLOWED_ORIGINS = (
+    "null,http://localhost:8000,http://127.0.0.1:8000,http://localhost:5500,http://127.0.0.1:5500"
+)
+
+
+def allowed_origins() -> list[str]:
+    """Parse ALLOWED_ORIGINS into a list for CORSMiddleware.
+
+    Read here rather than on Settings so that a malformed risk limit elsewhere in
+    load_settings() cannot stop the API from booting with correct CORS -- this is
+    consulted once, at import, before any request is served.
+    """
+    raw = os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS)
+    origins = [item.strip() for item in raw.split(",") if item.strip()]
+    return origins or ["null"]
+
+
 def _float_env(name: str, default: str, *, minimum: float | None = None) -> float:
     try:
         value = float(os.getenv(name, default))

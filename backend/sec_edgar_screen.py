@@ -48,6 +48,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from sec_edgar_cache import cached_fetch
+from shariah_screen_store import record_screen_to_default_db
 
 
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -197,8 +198,12 @@ def reset_ticker_cache() -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_us_symbol(symbol: str) -> dict:
-    """Screen one US-listed symbol. Mirrors zoya_compliance.check_us_symbol."""
+def _screen_us_symbol(symbol: str) -> dict:
+    """Screen one US-listed symbol. Mirrors zoya_compliance.check_us_symbol.
+
+    The verdict-producing half, split out from check_us_symbol so that every
+    one of its six exits is logged by one call site instead of six.
+    """
     normalized = str(symbol or "").strip().upper()
     if not normalized:
         return {"status": "UNKNOWN", "symbol": normalized, "reason": "symbol_required"}
@@ -276,6 +281,30 @@ def check_us_symbol(symbol: str) -> dict:
             f"of total assets, both under {MAX_RATIO_PCT:.0f}%"
         ),
     }
+
+
+def _record_screen(verdict: dict) -> None:
+    """Append the verdict to the audit log. Replaceable seam -- tests swap this
+    so the suite never writes to the real paper_trading.db."""
+    record_screen_to_default_db(verdict)
+
+
+def check_us_symbol(symbol: str) -> dict:
+    """Screen one US-listed symbol, and record the verdict in the audit log.
+
+    The log is observability, not a gate: a failed write must never change a
+    verdict. Fail-closed is the right instinct everywhere a decision is made in
+    this repo, and exactly the wrong one here -- letting a locked SQLite file
+    turn a COMPLIANT company into an ERROR would be a screening bug caused by
+    bookkeeping. So the write is best-effort and the verdict is returned either
+    way.
+    """
+    verdict = _screen_us_symbol(symbol)
+    try:
+        _record_screen(verdict)
+    except Exception:
+        pass
+    return verdict
 
 
 # ---------------------------------------------------------------------------
