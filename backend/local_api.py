@@ -14,7 +14,7 @@ from agents.shariah_agent import detect_market, evaluate_shariah
 from alpaca_paper_adapter import ALPACA_ADAPTERS, check_alpaca_status
 from approval_queue import ensure_approval_queue, get_approval, list_approvals, record_approval
 from approval_workflow import approve_candidate
-from config import load_settings
+from config import allowed_origins, load_settings
 from market_data import summarize_history
 from moomoo_status import check_moomoo_status
 from opportunity_scanner import scan_opportunities
@@ -31,6 +31,10 @@ from portfolio_store import (
     sync_filled_order,
 )
 from shariah_candidate import build_shariah_candidate
+from shariah_screen_store import (
+    ensure_shariah_screen_tables,
+    list_shariah_screens,
+)
 from shariah_explain import explain_symbol
 from shariah_trace import describe_approval
 from trading_modes import trading_mode_status
@@ -50,7 +54,7 @@ DB_PATH = BACKEND_DIR / "paper_trading.db"
 app = FastAPI(title="Amanah Trader Local API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins(),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -65,6 +69,7 @@ def db() -> sqlite3.Connection:
     ensure_approval_queue(connection)
     ensure_watchlist_tables(connection)
     ensure_portfolio_tables(connection)
+    ensure_shariah_screen_tables(connection)
     connection.commit()
     return connection
 
@@ -1313,6 +1318,21 @@ def opportunity_alerts(limit: int = 50) -> list[dict]:
     connection = db()
     try:
         return list_alert_events(connection, limit=max(1, min(200, limit)))
+    finally:
+        connection.close()
+
+
+@app.get("/shariah/screens")
+def shariah_screens(symbol: str | None = None, limit: int = 50) -> list[dict]:
+    """The append-only record of every US screen that actually ran.
+
+    Read-only and derived: nothing here decides anything, it reports what the
+    screen already decided and when. The verdict a caller should act on is the
+    one /paper/preview returns now, not the newest row in this log.
+    """
+    connection = db()
+    try:
+        return list_shariah_screens(connection, symbol=symbol, limit=max(1, min(200, limit)))
     finally:
         connection.close()
 
