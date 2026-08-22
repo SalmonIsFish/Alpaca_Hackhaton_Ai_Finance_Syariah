@@ -149,9 +149,65 @@ of this audit.
 Nothing has hit `/paper/execute`, `/paper/reconcile` or `POST /audit` — **0 requests** across the
 whole log. The exposure is real but has not been exercised.
 
+## Hardening applied 2026-08-22
+
+Gaps 1, 2, 3, 5 and 6 above are closed. Applied in this order — fail2ban, then the operator key,
+then the vhost last, so the one change touching live traffic went in with the rest already
+verified.
+
+| | |
+|---|---|
+| `fail2ban` | installed, `sshd` jail only, `bantime 1h` / `findtime 10m` / `maxretry 5`, systemd backend. Config at `/etc/fail2ban/jail.local`. Deliberately **not** watching nginx: banning a judge mid-demo for clicking quickly is worse than the traffic it would stop. |
+| Operator key | `/etc/nginx/conf.d/amanah_operator_key.conf`, `0600 root:root`, 64 hex chars from `openssl rand -hex 32`. Generated on the box; never printed, never committed. |
+| Bucket tuning | `/etc/nginx/conf.d/00-amanah-tuning.conf`, `map_hash_bucket_size 128`. See below. |
+| Vhost | replaced from `docs/deployment/nginx/amanahtrader.uk.conf`. Previous version backed up at `/etc/nginx/sites-available/amanahtrader.uk.bak-preharden`. |
+
+**The bucket-size trap, recorded because it nearly caused an outage.** A 64-hex-character key
+overflows nginx's default `map_hash_bucket_size` of 64, and the failure is not scoped to the map —
+the *entire* config fails to build with `could not build map_hash`. Dropping the key file in place
+left `nginx -t` failing while nginx kept serving from memory, so the next reload or reboot would
+have taken the site down with no obvious cause. It was caught because `nginx -t` was run
+immediately after writing the file rather than at the end.
+
+A dry run of the vhost against a staged copy in `/tmp` had passed earlier and did **not** catch
+this, because the placeholder key used there was 37 characters and fit in the default bucket.
+**Validate with a key of realistic length**, or the test proves nothing about the real one.
+
+### Verified after applying
+
+| Probe | Before | After |
+|---|---|---|
+| `GET /health`, `/system/mode`, `/paper/status`, `/approvals`, `GET /audit` | 200 | 200 (unchanged, deliberately) |
+| `GET /docs`, `/redoc`, `/openapi.json` | 200 | **404** |
+| `Server:` header | `nginx/1.24.0 (Ubuntu)` | `nginx` |
+| HSTS / nosniff / SAMEORIGIN / Referrer-Policy | absent | all four present |
+| `POST /paper/execute/{id}` with no key | **200, wrote a ledger row** | **401** |
+| `POST /paper/reconcile/{id}` with no key | 200 | **401** |
+| `POST /audit` with no key | 422 (reached the app) | **401** |
+| `POST /paper/execute/{id}` with a wrong key | n/a | **401** |
+| `POST /paper/execute/{id}` with the right key | n/a | 200, the app's own `CONFIRMATION_REQUIRED` |
+| `/secrets.json`, `/.env` | 404 from the app | 404 from nginx, logged to `scanner.log` |
+| 30 parallel requests to a rate-limited route | all 200 | 13 × 200, 17 × **429** |
+
+The `401`s are enforced at the edge: `journalctl -u amanah-trader` shows the app received the
+pre-hardening probe and the correctly-keyed request, and **none** of the rejected ones.
+
+The pre-hardening probe is worth keeping as evidence of what was actually exposed. A single
+anonymous `POST /paper/execute/999999` returned `200`, created execution row 32 in the ledger, and
+replied with `"required_confirmation": "EXECUTE PAPER"` — handing the caller the exact phrase
+needed to proceed.
+
+Demo re-verified end to end afterwards: `https://amanahtrader.uk/dashboard/` loads, API reports
+Connected, and an AAPL preview completes — Shariah `PASS / US` off a live SEC EDGAR screen, price
+source `alpaca_iex` over 221 bars, risk `PASS`, coordinator `REJECT` on `quant NO_SIGNAL`. That
+rejection is the gate chain working as designed: a directional equity BUY still requires a BUY
+signal. No console errors on a fresh load.
+
 ## The nginx vhost
 
-As audited, before hardening. Certbot generated all of it; nothing was added by hand.
+As audited, before hardening. Certbot generated all of it; nothing was added by hand. The live
+file is now the hardened version; this is kept for reference and is what
+`amanahtrader.uk.bak-preharden` contains.
 
 ```nginx
 server {
