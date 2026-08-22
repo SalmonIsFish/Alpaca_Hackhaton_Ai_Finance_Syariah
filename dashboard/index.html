@@ -7,57 +7,66 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0a0f14;
-      --bg-soft: #0f161d;
-      --panel: #111a22;
-      --panel-2: #16212b;
-      --panel-3: #1a2631;
-      --text: #eef4f1;
-      --muted: #9eaba6;
-      --subtle: #687873;
-      --border: #25333f;
-      --border-strong: #334653;
-      --accent: #2dd4bf;
-      --accent-2: #5eead4;
-      --accent-muted: rgba(45, 212, 191, 0.12);
-      --button-text: #05201c;
-      --ok: #34d399;
-      --ok-bg: rgba(52, 211, 153, 0.12);
-      --warn: #fbbf24;
-      --warn-bg: rgba(251, 191, 36, 0.12);
-      --bad: #fb7185;
-      --bad-bg: rgba(251, 113, 133, 0.12);
-      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      /* Ink-navy operator console. Brass is the only accent -- it never
+         doubles as a status color, so PASS/FAIL/WARN always read from
+         --ok/--warn/--bad alone, regardless of accent hue. */
+      --bg: #0b0f1a;
+      --bg-soft: #0f1526;
+      --panel: #131a2c;
+      --panel-2: #182036;
+      --panel-3: #1c2540;
+      --text: #eef1f8;
+      --muted: #99a3bd;
+      --subtle: #6b7794;
+      --border: #263153;
+      --border-strong: #35447a;
+      --accent: #b8925a;
+      --accent-2: #d1ab7c;
+      --accent-muted: rgba(184, 146, 90, 0.16);
+      --button-text: #1b1206;
+      --ok: #5fae86;
+      --ok-bg: rgba(95, 174, 134, 0.14);
+      --warn: #e3b341;
+      --warn-bg: rgba(227, 179, 65, 0.14);
+      --bad: #e0685c;
+      --bad-bg: rgba(224, 104, 92, 0.14);
+      --shadow: 0 18px 46px rgba(0, 0, 0, 0.4);
       --radius: 8px;
       --font-sm: 12px;
       --font-md: 14px;
       --font-lg: 18px;
       --font-xl: 26px;
+      --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+      --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
     }
 
     [data-theme="light"] {
       color-scheme: light;
-      --bg: #f3f6f5;
-      --bg-soft: #e9efed;
+      /* Cool off-white, not warm cream -- deliberately not the
+         cream+serif+terracotta combination this dashboard's dark mode
+         (the default view) already avoids. */
+      --bg: #f4f6f9;
+      --bg-soft: #eef1f6;
       --panel: #ffffff;
-      --panel-2: #f7faf9;
-      --panel-3: #edf3f1;
-      --text: #12211c;
-      --muted: #5f6f69;
-      --subtle: #83908b;
-      --border: #d8e1dd;
-      --border-strong: #bfccc7;
-      --accent: #0f766e;
-      --accent-2: #115e59;
-      --accent-muted: rgba(15, 118, 110, 0.1);
+      --panel-2: #f6f8fb;
+      --panel-3: #eef2f7;
+      --text: #16202f;
+      --muted: #5b6779;
+      --subtle: #808da0;
+      --border: #d8dee8;
+      --border-strong: #b9c3d3;
+      --accent: #7c5b2e;
+      --accent-2: #61451f;
+      --accent-muted: rgba(124, 91, 46, 0.12);
       --button-text: #ffffff;
-      --ok: #087f5b;
-      --ok-bg: rgba(8, 127, 91, 0.1);
-      --warn: #b7791f;
-      --warn-bg: rgba(183, 121, 31, 0.12);
-      --bad: #c92a2a;
-      --bad-bg: rgba(201, 42, 42, 0.1);
-      --shadow: 0 16px 36px rgba(18, 33, 28, 0.08);
+      --ok: #2f8f63;
+      --ok-bg: rgba(47, 143, 99, 0.1);
+      --warn: #c07f1f;
+      --warn-bg: rgba(192, 127, 31, 0.12);
+      --bad: #c2483c;
+      --bad-bg: rgba(194, 72, 60, 0.1);
+      --shadow: 0 16px 36px rgba(15, 25, 40, 0.08);
     }
 
     * {
@@ -67,7 +76,7 @@
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: var(--font-sans);
       font-size: var(--font-md);
       background: var(--bg);
       color: var(--text);
@@ -147,22 +156,46 @@
     }
 
     .app {
-      width: min(1180px, calc(100% - 32px));
+      display: flex;
+      align-items: stretch;
+      min-height: 100vh;
+      width: 100%;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 24px 0 40px;
+    }
+
+    .sidebar {
+      flex: 0 0 232px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      padding: 24px 16px;
+      border-right: 1px solid var(--border);
+      background: var(--bg-soft);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 24px 28px 40px;
     }
 
     .topbar {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 18px;
+      display: flex;
+      justify-content: flex-end;
       align-items: center;
+      gap: 18px;
       margin-bottom: 16px;
     }
 
     .brand {
       display: grid;
       gap: 8px;
+      padding: 0 4px;
     }
 
     .eyebrow {
@@ -173,9 +206,15 @@
       text-transform: uppercase;
     }
 
+    .sidebar-theme-toggle {
+      margin-top: auto;
+    }
+
     h1, h2 {
       margin: 0;
       letter-spacing: 0;
+      font-family: var(--font-serif);
+      font-weight: 700;
     }
 
     h1 {
@@ -186,6 +225,15 @@
     h2 {
       font-size: var(--font-lg);
       line-height: 1.2;
+    }
+
+    /* Data figures, JSON, and status badges read as ledger entries, not
+       prose -- monospace throughout, distinct from the serif headings
+       and sans body/labels. */
+    .stat-value, .summary-card strong, .paper-order-field strong,
+    .queue-item strong, .portfolio-row strong, .paper-order-title strong,
+    pre, code, .badge {
+      font-family: var(--font-mono);
     }
 
     .top-actions {
@@ -201,38 +249,40 @@
 
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 10px;
       margin-bottom: 16px;
     }
 
+    /* Sidebar nav -- same nav element and data-view-tab buttons as before,
+       just stacked vertically instead of a horizontal scrolling strip. */
     .view-tabs {
-      position: sticky;
-      top: 0;
-      z-index: 10;
       display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      margin-bottom: 16px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 8px;
-      background: var(--bg);
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow);
+      flex-direction: column;
+      gap: 3px;
     }
 
     .view-tab {
       min-height: 36px;
-      color: var(--text);
-      border-color: var(--border);
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+      color: var(--muted);
+      border-color: transparent;
       background: transparent;
+      font-weight: 700;
+    }
+
+    .view-tab:hover:not(:disabled) {
+      color: var(--text);
+      background: var(--panel-3);
     }
 
     .view-tab.active {
-      color: var(--button-text);
-      border-color: transparent;
-      background: var(--accent);
+      color: var(--accent);
+      border-color: var(--border);
+      background: var(--panel-2);
+      box-shadow: inset 2px 0 0 var(--accent);
     }
 
     .stat {
@@ -906,7 +956,197 @@
       gap: 8px;
     }
 
+    /* ---------------------------------------------------------------
+       Officer desk -- Quant Manager / Shariah Compliance Officer /
+       Risk Manager / Trader (Execution Desk). Full desk on the Agent
+       Summary (approval decision) panel and replayed per flagged row
+       in Execution Audit; a compact pill row stands in on Investment
+       Committee rows. Avatars/role labels use the brass accent as a
+       seat/desk motif -- verdicts always come from --ok/--warn/--bad,
+       never from the accent, so branding and status never mix.
+       --------------------------------------------------------------- */
+
+    .officer-desk {
+      display: grid;
+      /* Both placements (Agent Summary, Execution Audit) live in the
+         narrower aside column -- 2x2 leaves each seat enough width for
+         "Shariah Compliance Officer" to wrap instead of overflowing. */
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .officer-desk.compact-desk {
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .officer-seat {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--panel-2);
+      min-width: 0;
+    }
+
+    .officer-seat-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .officer-avatar {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: var(--accent-muted);
+      color: var(--accent);
+      font-family: var(--font-serif);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .officer-role {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: var(--font-serif);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .officer-verdict {
+      justify-self: start;
+    }
+
+    .officer-subchecks {
+      display: grid;
+      gap: 5px;
+      margin-top: 2px;
+    }
+
+    .officer-subcheck {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .officer-detail {
+      margin: 0;
+      font-size: 11px;
+      color: var(--subtle);
+      font-family: var(--font-mono);
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .officer-desk-seal {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      padding: 10px 12px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      background: var(--accent-muted);
+      font-family: var(--font-serif);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      overflow-wrap: anywhere;
+    }
+
+    .officer-desk-seal.ok { color: var(--ok); }
+    .officer-desk-seal.bad { color: var(--bad); }
+    .officer-desk-seal.warn { color: var(--warn); }
+
+    .officer-desk-card {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--panel-3);
+      margin-bottom: 10px;
+    }
+
+    .officer-desk-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .officer-pill-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .officer-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+      font-family: var(--font-mono);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .officer-pill.ok { color: var(--ok); border-color: rgba(95, 174, 134, 0.5); background: var(--ok-bg); }
+    .officer-pill.warn { color: var(--warn); border-color: rgba(227, 179, 65, 0.5); background: var(--warn-bg); }
+    .officer-pill.bad { color: var(--bad); border-color: rgba(224, 104, 92, 0.5); background: var(--bad-bg); }
+
     @media (max-width: 980px) {
+      .app {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px;
+        overflow-y: visible;
+      }
+
+      .view-tabs {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+
+      .view-tab {
+        width: auto;
+      }
+
+      .sidebar-theme-toggle {
+        margin-top: 0;
+        margin-left: auto;
+      }
+
       .layout {
         grid-template-columns: 1fr;
       }
@@ -921,13 +1161,13 @@
     }
 
     @media (max-width: 680px) {
-      .app {
-        width: min(100% - 20px, 1180px);
-        padding-top: 16px;
+      .main {
+        padding: 16px 14px 32px;
       }
 
       .topbar {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
       }
 
       .top-actions {
@@ -938,7 +1178,7 @@
         width: 100%;
       }
 
-      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls, .paper-order-grid, .paper-order-head, .portfolio-summary, .portfolio-row, .stock-profile-actions, .profile-grid {
+      .status-strip, .order-grid, .summary-grid, .approval-actions, .opportunity-controls, .paper-order-grid, .paper-order-head, .portfolio-summary, .portfolio-row, .stock-profile-actions, .profile-grid, .officer-desk {
         grid-template-columns: 1fr;
       }
 
@@ -954,58 +1194,63 @@
 </head>
 <body>
   <main class="app">
-    <header class="topbar">
+    <aside class="sidebar">
       <div class="brand">
         <div class="eyebrow">Paper Trading Control</div>
         <h1>Amanah Trader</h1>
       </div>
-      <div class="top-actions">
-        <input id="apiBase" class="api-control" value="http://127.0.0.1:8000" aria-label="Local API base URL">
-        <button id="refreshButton" type="button">Refresh</button>
-        <button id="themeToggle" class="secondary" type="button" aria-pressed="true">Light Mode</button>
-      </div>
-    </header>
 
-    <section class="status-strip" aria-live="polite">
-      <div class="stat">
-        <div class="stat-label">API Connection</div>
-        <div id="apiConnection" class="stat-value warn">Not checked</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Trading Mode</div>
-        <div id="paperMode" class="stat-value warn">Not checked</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Operating Mode</div>
-        <div id="tradingMode" class="stat-value warn">Not checked</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Approval Gate</div>
-        <div id="approvalRequired" class="stat-value warn">Not checked</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Broker Submission</div>
-        <div id="brokerSubmission" class="stat-value warn">Not checked</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Paper Execution</div>
-        <div id="paperExecution" class="stat-value warn">Not checked</div>
-      </div>
-    </section>
+      <nav class="view-tabs" aria-label="Dashboard sections">
+        <button class="view-tab active" type="button" data-view-tab="ticket">Ticket</button>
+        <button class="view-tab" type="button" data-view-tab="opportunities">Market Overview</button>
+        <button class="view-tab" type="button" data-view-tab="stock">Stock Profile</button>
+        <button class="view-tab" type="button" data-view-tab="portfolio">Portfolio/Risk</button>
+        <button class="view-tab" type="button" data-view-tab="news">News</button>
+        <button class="view-tab" type="button" data-view-tab="orders">Orders</button>
+        <button class="view-tab" type="button" data-view-tab="committee">Committee</button>
+        <button class="view-tab" type="button" data-view-tab="audit">Audit</button>
+        <button class="view-tab" type="button" data-view-tab="all">All</button>
+      </nav>
 
-    <nav class="view-tabs" aria-label="Dashboard sections">
-      <button class="view-tab active" type="button" data-view-tab="ticket">Ticket</button>
-      <button class="view-tab" type="button" data-view-tab="opportunities">Market Overview</button>
-      <button class="view-tab" type="button" data-view-tab="stock">Stock Profile</button>
-      <button class="view-tab" type="button" data-view-tab="portfolio">Portfolio/Risk</button>
-      <button class="view-tab" type="button" data-view-tab="news">News</button>
-      <button class="view-tab" type="button" data-view-tab="orders">Orders</button>
-      <button class="view-tab" type="button" data-view-tab="committee">Committee</button>
-      <button class="view-tab" type="button" data-view-tab="audit">Audit</button>
-      <button class="view-tab" type="button" data-view-tab="all">All</button>
-    </nav>
+      <button id="themeToggle" class="secondary sidebar-theme-toggle" type="button" aria-pressed="true">Light Mode</button>
+    </aside>
 
-    <div class="layout">
+    <div class="main">
+      <header class="topbar">
+        <div class="top-actions">
+          <input id="apiBase" class="api-control" value="http://127.0.0.1:8000" aria-label="Local API base URL">
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-live="polite">
+        <div class="stat">
+          <div class="stat-label">API Connection</div>
+          <div id="apiConnection" class="stat-value warn">Not checked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Trading Mode</div>
+          <div id="paperMode" class="stat-value warn">Not checked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Operating Mode</div>
+          <div id="tradingMode" class="stat-value warn">Not checked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Approval Gate</div>
+          <div id="approvalRequired" class="stat-value warn">Not checked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Broker Submission</div>
+          <div id="brokerSubmission" class="stat-value warn">Not checked</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Paper Execution</div>
+          <div id="paperExecution" class="stat-value warn">Not checked</div>
+        </div>
+      </section>
+
+      <div class="layout">
       <section class="workspace-column">
         <section class="panel" data-view="ticket stock">
           <div class="panel-head">
@@ -1137,6 +1382,7 @@
             <h2>Agent Summary</h2>
             <span id="approvalBadge" class="badge warn">Awaiting Agents</span>
           </div>
+          <div id="approvalOfficerDesk"></div>
           <div class="summary-grid">
             <div class="summary-card">
               <div class="stat-label">Coordinator</div>
@@ -1329,6 +1575,7 @@
           <div id="auditList" class="audit-list"></div>
         </section>
       </aside>
+      </div>
     </div>
   </main>
 
@@ -1451,6 +1698,7 @@
     const executionAuditBadge = document.querySelector("#executionAuditBadge");
     const executionAuditSummary = document.querySelector("#executionAuditSummary");
     const executionAuditFlags = document.querySelector("#executionAuditFlags");
+    const approvalOfficerDesk = document.querySelector("#approvalOfficerDesk");
     let currentPreview = null;
     let currentPortfolio = null;
     let currentInvestmentCommittee = null;
@@ -1978,12 +2226,14 @@
           `Underlying: live GET /stock/${symbol}/explain. Structure/Account: parsed from approval trace (not covered by that endpoint).`,
         );
       }
+      renderApprovalOfficerDesk(currentPreview, approval);
     }
 
     function resetGateFields() {
       setMetric(optionStructureStatus, "Not applicable");
       setMetric(accountShariahStatus, "Not applicable");
       renderTraceCards([], "");
+      renderApprovalOfficerDesk(null);
     }
 
     function formatPct(value) {
@@ -2063,6 +2313,228 @@
       return response.json();
     }
 
+    // ---------------------------------------------------------------------
+    // Officer desk -- Quant Manager, Shariah Compliance Officer (bundling
+    // the underlying screen, option-structure gate, and account Riba gate
+    // under one seat), Risk Manager, and the Trader/Execution Desk. Renders
+    // full on the Agent Summary panel (the live approval decision) and is
+    // replayed per flagged row in Execution Audit; Investment Committee
+    // gets a compact pill row instead of the full desk. See
+    // officerDeskDataFromPreview / officerDeskDataFromQueueItem for how
+    // each placement sources its data.
+    // ---------------------------------------------------------------------
+
+    const OFFICER_SEATS = [
+      { key: "quant", role: "Quant Manager", initial: "Q" },
+      { key: "shariah", role: "Shariah Compliance Officer", initial: "S" },
+      { key: "risk", role: "Risk Manager", initial: "R" },
+      { key: "trader", role: "Trader — Execution Desk", initial: "T" },
+    ];
+
+    function officerBadgeState(ok) {
+      if (ok === true) {
+        return "ok";
+      }
+      if (ok === false) {
+        return "bad";
+      }
+      return "warn";
+    }
+
+    function buildOfficerSubcheck(sub) {
+      const row = document.createElement("div");
+      row.className = "officer-subcheck";
+      const name = document.createElement("span");
+      name.textContent = sub.label;
+      const badge = document.createElement("span");
+      badge.className = `badge ${officerBadgeState(sub.ok)}`;
+      badge.textContent = sub.verdictText || "PENDING";
+      row.appendChild(name);
+      row.appendChild(badge);
+      return row;
+    }
+
+    function buildOfficerSeat(seatDef, seatData) {
+      const seat = document.createElement("div");
+      seat.className = "officer-seat";
+
+      const head = document.createElement("div");
+      head.className = "officer-seat-head";
+      const avatar = document.createElement("span");
+      avatar.className = "officer-avatar";
+      avatar.textContent = seatDef.initial;
+      const role = document.createElement("span");
+      role.className = "officer-role";
+      role.textContent = seatDef.role;
+      head.appendChild(avatar);
+      head.appendChild(role);
+      seat.appendChild(head);
+
+      const verdict = document.createElement("span");
+      verdict.className = `badge officer-verdict ${officerBadgeState(seatData.ok)}`;
+      verdict.textContent = seatData.verdictText || "PENDING";
+      seat.appendChild(verdict);
+
+      if (seatData.subchecks && seatData.subchecks.length) {
+        const subwrap = document.createElement("div");
+        subwrap.className = "officer-subchecks";
+        seatData.subchecks.forEach((sub) => subwrap.appendChild(buildOfficerSubcheck(sub)));
+        seat.appendChild(subwrap);
+      }
+
+      if (seatData.detail) {
+        const detail = document.createElement("p");
+        detail.className = "officer-detail";
+        detail.textContent = seatData.detail;
+        seat.appendChild(detail);
+      }
+
+      return seat;
+    }
+
+    function renderOfficerDesk(container, seatsData, overall, options = {}) {
+      if (!container) {
+        return;
+      }
+      container.textContent = "";
+      const desk = document.createElement("div");
+      desk.className = options.compact ? "officer-desk compact-desk" : "officer-desk";
+      OFFICER_SEATS.forEach((seatDef) => {
+        desk.appendChild(buildOfficerSeat(seatDef, seatsData[seatDef.key] || {}));
+      });
+      container.appendChild(desk);
+      if (overall) {
+        const seal = document.createElement("div");
+        seal.className = `officer-desk-seal ${officerBadgeState(overall.ok)}`;
+        seal.textContent = overall.text;
+        container.appendChild(seal);
+      }
+    }
+
+    function traceGateMatches(trace) {
+      return {
+        structureMatch: (trace || "").match(/structure=\S+ -> (PASS|REJECT)/),
+        accountMatch: (trace || "").match(/account=(\S+) -> (PASS|REJECT)/),
+      };
+    }
+
+    // Shared by the live Agent Summary desk and the Execution Audit replay:
+    // both ultimately have a `preview` (with agent_summary) and, once a
+    // decision has been recorded, an `approval` (with shariah_trace and
+    // execution_environment). Before that decision, the option-structure
+    // and account gates legitimately read "Pending decision" -- that trace
+    // string doesn't exist until approval_workflow.approve_candidate runs.
+    function officerDeskDataFromPreview(preview, approval) {
+      const agents = preview?.agent_summary || {};
+      const shariahStatus = agents.shariah?.status || preview?.shariah?.status;
+      const quantSignal = agents.quant?.signal;
+      const riskStatus = agents.risk?.status || preview?.risk?.status;
+      const portfolioRisk = agents.risk?.details?.portfolio;
+      const trace = approval?.shariah_trace || "";
+      const { structureMatch, accountMatch } = traceGateMatches(trace);
+      const isOption = preview?.asset_class === "option" || Boolean(preview?.option_contract);
+
+      const shariahSubchecks = [
+        { label: "Underlying screen", verdictText: shariahStatus || "PENDING", ok: shariahStatus ? shariahStatus === "PASS" : null },
+      ];
+      if (isOption) {
+        shariahSubchecks.push({
+          label: "Option structure",
+          verdictText: structureMatch ? structureMatch[1] : "Pending decision",
+          ok: structureMatch ? structureMatch[1] === "PASS" : null,
+        });
+      }
+      shariahSubchecks.push({
+        label: "Account Riba",
+        verdictText: accountMatch ? accountMatch[2] : "Pending decision",
+        ok: accountMatch ? accountMatch[2] === "PASS" : null,
+      });
+
+      const traderVerdictText = approval?.status
+        || (preview ? (preview.status === "READY_FOR_APPROVAL" ? "Awaiting decision" : preview.status) : "PENDING");
+      const traderOk = approval ? approval.status === "APPROVED_PAPER_READY" : null;
+
+      return {
+        quant: {
+          verdictText: quantSignal || "PENDING",
+          ok: quantSignal === "BUY" ? true : null,
+          detail: agents.quant?.price_source ? `${agents.quant.bars ?? "-"} bars via ${agents.quant.price_source}` : null,
+        },
+        shariah: {
+          verdictText: shariahStatus || "PENDING",
+          ok: shariahStatus ? shariahStatus === "PASS" : null,
+          subchecks: shariahSubchecks,
+        },
+        risk: {
+          verdictText: riskStatus || "PENDING",
+          ok: riskStatus ? riskStatus === "PASS" : null,
+          detail: portfolioRisk
+            ? `Position ${formatPct(portfolioRisk.projected_position_pct)} / Total ${formatPct(portfolioRisk.projected_total_exposure_pct)}`
+            : null,
+        },
+        trader: {
+          verdictText: traderVerdictText,
+          ok: traderOk,
+          detail: approval?.execution_environment ? `Execution: ${approval.execution_environment}` : null,
+        },
+      };
+    }
+
+    function officerDeskOverall(preview, approval) {
+      if (approval && approval.status) {
+        return { ok: approval.status === "APPROVED_PAPER_READY", text: `SEALED: ${approval.status}` };
+      }
+      if (preview) {
+        const ready = preview.status === "READY_FOR_APPROVAL";
+        return { ok: ready ? null : false, text: ready ? "Awaiting Approve / Reject" : `BLOCKED: ${preview.status}` };
+      }
+      return { ok: null, text: "No ticket under review" };
+    }
+
+    function renderApprovalOfficerDesk(preview, approval) {
+      if (!preview) {
+        renderOfficerDesk(approvalOfficerDesk, {
+          quant: { verdictText: "PENDING" },
+          shariah: { verdictText: "PENDING" },
+          risk: { verdictText: "PENDING" },
+          trader: { verdictText: "No ticket under review" },
+        }, officerDeskOverall(null, null));
+        return;
+      }
+      renderOfficerDesk(approvalOfficerDesk, officerDeskDataFromPreview(preview, approval), officerDeskOverall(preview, approval));
+    }
+
+    // Execution Audit replay: reuses the same stored preview payload the
+    // approval queue already carries (approvalPayload() -- defined below,
+    // available here via function hoisting). Falls back to whatever flat
+    // fields the row itself carries (shariah_status/quant_signal/risk_status)
+    // when no stored preview is present, rather than fabricating detail
+    // that isn't there.
+    function officerDeskDataFromQueueItem(item) {
+      const payload = approvalPayload(item);
+      const preview = payload.preview || null;
+      const trace = preview?.shariah_trace || item.shariah_trace || "";
+      if (preview) {
+        const base = officerDeskDataFromPreview(preview, { status: item.approval_status, shariah_trace: trace });
+        const executionStatus = item.execution_status;
+        if (executionStatus) {
+          base.trader.verdictText = executionStatus;
+          base.trader.ok = executionStatus === "BROKER_FILLED"
+            ? true
+            : executionStatus === "BROKER_REJECTED" || executionStatus === "BROKER_EXPIRED" || executionStatus === "BROKER_CANCELLED"
+              ? false
+              : base.trader.ok;
+        }
+        return base;
+      }
+      return {
+        quant: { verdictText: item.quant_signal || "N/A" },
+        shariah: { verdictText: item.shariah_status || "N/A", ok: item.shariah_status ? item.shariah_status === "PASS" : null },
+        risk: { verdictText: item.risk_status || "N/A", ok: item.risk_status ? item.risk_status === "PASS" : null },
+        trader: { verdictText: item.execution_status || item.approval_status || "N/A" },
+      };
+    }
+
     function renderPreview(payload) {
       currentPreview = payload.preview;
       const preview = payload.preview;
@@ -2099,6 +2571,7 @@
       rawOutput.textContent = JSON.stringify(payload, null, 2);
       renderCommittee(currentInvestmentCommittee, preview);
       renderRiskPolicy(preview);
+      renderApprovalOfficerDesk(preview, null);
     }
 
     async function refreshStatus() {
@@ -2237,11 +2710,24 @@
         executionAuditFlags.append(empty);
         return;
       }
+      // Each flagged row replays the same officer desk the live approval
+      // used -- Audit is a read-only replay of that meeting, not a new one.
       flagged.forEach((row) => {
-        const item = document.createElement("div");
-        item.className = "audit-item";
-        item.innerHTML = `<span class="badge bad">Queue #${row.id}</span><code>${row.symbol} ${row.side} | ${row.approval_status} | ${row.execution_status || "-"}</code>`;
-        executionAuditFlags.append(item);
+        const card = document.createElement("div");
+        card.className = "officer-desk-card";
+        const head = document.createElement("div");
+        head.className = "officer-desk-card-head";
+        head.innerHTML = `<span class="badge bad">Queue #${row.id}</span><span>${row.symbol || "-"} ${row.side || ""}</span>`;
+        card.appendChild(head);
+        const deskSlot = document.createElement("div");
+        card.appendChild(deskSlot);
+        renderOfficerDesk(
+          deskSlot,
+          officerDeskDataFromQueueItem(row),
+          { ok: false, text: `${row.approval_status || "-"} / ${row.execution_status || "-"}` },
+          { compact: true },
+        );
+        executionAuditFlags.append(card);
       });
     }
 
@@ -2276,6 +2762,26 @@
         const blockers = candidate.blockers?.length ? candidate.blockers.join(", ") : "clear";
         const approvals = candidate.recent_approvals?.length ? ` | approvals ${candidate.recent_approvals.length}` : "";
         row.innerHTML = `<span class="badge ${stateClass(status)}">${candidate.symbol || "-"}</span><code>${status} | ${price} vs trigger ${trigger} | Shariah ${candidate.shariah_status || "-"} | Quant ${candidate.quant_signal || "-"} | Risk ${candidate.risk_status || "-"} | ${blockers}${approvals}</code>`;
+        // Compact stand-in for the officer desk -- same color language (Q/S/R/T),
+        // one row per candidate rather than four expanded seats; the full desk
+        // belongs to an actual decision (Agent Summary / Execution Audit), not
+        // a committee scan.
+        const pillRow = document.createElement("div");
+        pillRow.className = "officer-pill-row";
+        pillRow.innerHTML = OFFICER_SEATS.map((seatDef) => {
+          let ok = null;
+          if (seatDef.key === "quant") {
+            ok = candidate.quant_signal === "BUY" ? true : null;
+          } else if (seatDef.key === "shariah") {
+            ok = candidate.shariah_status ? candidate.shariah_status === "PASS" : null;
+          } else if (seatDef.key === "risk") {
+            ok = candidate.risk_status ? candidate.risk_status === "PASS" : null;
+          } else {
+            ok = status === "READY_FOR_REVIEW" ? true : status === "BLOCKED" ? false : null;
+          }
+          return `<span class="officer-pill ${officerBadgeState(ok)}" title="${seatDef.role}">${seatDef.initial}</span>`;
+        }).join("");
+        row.appendChild(pillRow);
         committeeList.append(row);
       });
 
@@ -3102,6 +3608,7 @@
     renderStockProfile(null);
     renderMarketOverview(null);
     renderExecutionAudit(null);
+    renderApprovalOfficerDesk(null);
     applyAssetClassToTicket();
     assetClass.addEventListener("change", applyAssetClassToTicket);
     viewTabs.forEach((button) => {

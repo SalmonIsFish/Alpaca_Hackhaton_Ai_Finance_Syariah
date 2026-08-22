@@ -35,3 +35,6 @@ backend/staged_preview_*.json
 
 # Local Playwright MCP verification traces
 .playwright-mcp/
+
+# Reference-only design material, not part of the shipped dashboard
+TradingDesignIdea/
