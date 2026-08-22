@@ -82,8 +82,48 @@ PAPER_EXECUTION_ENABLED=true
 `ALPACA_MODE` is absent and therefore defaults to `paper`; `alpaca_paper_adapter` hardcodes the
 paper host regardless, so live trading stays impossible by construction rather than by config.
 
-`ALLOWED_ORIGINS` is not yet set on the box. Once the CORS change is deployed, set it to
-`https://amanahtrader.uk` — until then the app falls back to its permissive local-dev default.
+`ALLOWED_ORIGINS=https://amanahtrader.uk` was set on 2026-08-22 when the CORS change deployed.
+
+### The Shariah vault, and a bug the `scp` left behind
+
+The research vault is at `/home/amanah/shariah-vault` (`0750 amanah:amanah`, 20 MB, 34 `.md`
+files), copied from `E:\Projects Stuff\Multi_Ai_IslamicFinance` on 2026-08-22 with
+`08-Data-Governance/provider-decision-and-enquiry-drafts.md` deliberately excluded.
+
+```
+SHARIAH_UNIVERSE_PATH=/home/amanah/shariah-vault/08-Data-Governance/shariah-universe/staging/2026-05-29.json
+SHARIAH_WIKI_PATH=/home/amanah/shariah-vault/01-Shariah-Principles
+```
+
+**Both variables previously held Windows paths** — `E:\Projects Stuff\...` — carried over verbatim
+by the `scp` of the local `.env` that provisioned this box. On Linux they resolve to nothing, so
+from the VPS build until 2026-08-22:
+
+- `shariah_gate.check_symbol` returned `REJECT / universe_file_missing` for **every** symbol,
+  which means the **Malaysian screening path was dead in production**. It fails closed, so nothing
+  unsafe was ever approved, and the US path (`sec_edgar_screen`) was unaffected because it does
+  not read this file — which is why the AAPL and CVX demos worked and hid the problem.
+- `find_policy_context` returned `[]`, since its root did not exist.
+
+Two things make this worth recording rather than just fixing. First, `config.py:29` loads `.env`
+with `os.environ.setdefault`, so the **first** occurrence of a key wins — appending a corrected
+line leaves the broken one in charge, silently. Edit the existing line; do not append. Second,
+a config that fails closed looks identical to a config that is working correctly on the happy
+path, and only a symbol that *should* pass distinguishes them. The fix was confirmed by checking
+both directions: `0001` → `PASS / symbol_compliant` and `9999` → `REJECT / symbol_not_in_universe`.
+A blanket `REJECT` on both would have meant it was still broken.
+
+The vault universe file was verified identical in parsed form to the committed
+`data/shariah-universe/2026-05-29.json` (688 records, `validation.status: active`) before being
+pointed at. Note two decoy JSONs sit beside it — `schema.json` and `universe-manifest.json` —
+and either would fail the gate; the live file is the one under `staging/`.
+
+`SHARIAH_WIKI_PATH` feeds `wiki_context.find_policy_context`, which is called **only** from
+`explain_compliance.main()`, the CLI. It is not reachable over HTTP — `local_api.py` never imports
+it, and `/stock/{symbol}/explain` returns no `policy_context` key. Vault note content is therefore
+never served to the public API. Worth knowing before pointing this at anything, because the vault
+contains long verbatim extracts from copyrighted books (`Usmani-Intro-to-Finance.md`,
+`Islamic-Finance-hans-vimmer-Summary.md`) that must not become a public endpoint's output.
 
 ## State
 
