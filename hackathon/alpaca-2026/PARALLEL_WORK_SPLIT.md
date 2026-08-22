@@ -151,6 +151,38 @@ written).
 4. Everything else in the task lists below should be re-verified against current branch state
    before assuming it's still accurate — this snapshot will go stale fast.
 
+### 2026-08-22 update — supersedes the 2026-08-20 snapshot above where they conflict
+
+- **SSH into the VPS is resolved.** User is `amanah`, key `~/.ssh/amanahtrader_vps`, confirmed
+  working directly: `ssh -i ~/.ssh/amanahtrader_vps amanah@159.65.220.83`. Root is intentionally
+  locked at the OS account level (a password reset does not enable it — that's expected, not a
+  problem to fix). This was Terminal 2's item-1 blocker; item 1.1's host audit can proceed now.
+  Routine `apt update && apt upgrade` (not `dist-upgrade`, no reboot) was run manually by the
+  project owner directly on the box — if a kernel update / restart-required flag showed up, it
+  was left pending rather than rebooted, so check for that before assuming it's fully current.
+- **Terminal 1's dashboard redesign is committed, not merged.** `3b220e9` on `dashboard-redesign`
+  (fast-forwarded onto master first, so it includes everything through `86333f6`): ink-navy/brass
+  theme, sidebar nav, serif/mono/sans type system, and a new officer-desk component (Quant
+  Manager / Shariah Compliance Officer / Risk Manager / Trader) — full desk on Agent Summary and
+  replayed in Execution Audit, compact pill on Investment Committee, nothing added to
+  Ticket/Orders/Portfolio. Verified live via Playwright against a real `local_api` instance (not
+  mocked), light mode checked too. Every pre-existing element id/class was independently diffed
+  and confirmed intact. Not yet merged to master — pending the project owner's sequencing call
+  against whatever Terminal 2 lands next.
+- **Two submission-stage docs exist and are committed correctly now, not floating on master.**
+  `SOCIAL_POSTING_CADENCE.md` and `SUBMISSION_PACKAGE_ASSEMBLY.md` were originally written
+  untracked directly on `master` (outside the assigned worktree, at real risk of being lost to a
+  `git clean`) and have since been moved and committed at `fcdd473` on `research/hackathon-notes`
+  in `.worktrees/hackathon-research`. Per the cadence doc: Post 1's window was Aug 20-22
+  (closing/closed), Post 2 (methodology) opened Aug 22 — both are drafts only, actually posting
+  is a project-owner action no terminal can do.
+- **Terminal 2's items 2-4 (screening audit log, provisioning kickoff check, risk-adjusted
+  return metrics) and the CORS fix: status not yet reported back as of this writing.** Re-verify
+  against `feature/live-trade-backend`'s actual state before assuming any of it landed.
+- **A "Usage discipline" section was added** (below, under Tooling) after a `/usage` review
+  showed `superpowers:brainstorming` and long unscoped sessions as the two biggest cost drivers
+  across terminals — read it if a session's usage is running high.
+
 ## Why this split, and why this sequencing
 
 The key fact driving the current sequencing: judging requires a **brand-new dedicated Alpaca
